@@ -48,7 +48,8 @@ questionnaire with every answer's citations and approval record.
 ## 7. The MCP angle (optional, 60s)
 `asked-answered-mcp` exposes the approved-answer library as read-only tools
 (`search_answers`, `get_answer_provenance`). See `docs/ARCHITECTURE.md` and
-`src/mcp/server.ts`; it's identity-bound and honors the same visibility invariant.
+`src/mcp/server.ts`. It honors the same visibility invariant and fails closed:
+unconfigured, it redacts every evidence-backed answer; disclosure is opt-in.
 
 ---
 

@@ -65,10 +65,14 @@ Enforced in three places and property-tested (`tests/library.test.ts`,
   and degrades to Needs-SME on any miss.
 - **Grounded drafts** re-check each cited channel against the requester before
   releasing text.
-- **The MCP server** is bound to one identity at startup and redacts any
-  answer whose evidence that identity cannot verify.
+- **The MCP server** redacts any evidence-backed answer whose evidence the
+  bound identity cannot verify. It **fails closed by default**: an unconfigured
+  server (no visibility supplied) redacts every evidence-backed answer;
+  disclosure is opt-in (`AA_MCP_TRUST_LOCAL=1` for a local single-operator run,
+  or an injected `VisibilityChecker`).
 
-All three fail *closed*: a visibility-check error counts as "not visible."
+All three fail *closed*: a visibility-check error, or an unconfigured checker,
+counts as "not visible."
 
 ## Trust & integrity
 
