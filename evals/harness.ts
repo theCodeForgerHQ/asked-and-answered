@@ -111,7 +111,8 @@ export async function runEval(llm: DraftingLlm = fakeLlm): Promise<EvalReport> {
 
     let pass: boolean;
     if (c.expected.kind === 'grounded') {
-      pass = r.state === 'grounded' && (r.citations ?? []).some((cit) => cit.permalink === c.expected.mustCitePermalink);
+      const wanted = c.expected.mustCitePermalink;
+      pass = r.state === 'grounded' && (r.citations ?? []).some((cit) => cit.permalink === wanted);
     } else if (c.expected.reason === 'acl_degraded') {
       // ACL cases must fail for the RIGHT reason — this is the invariant we
       // are specifically proving (evidence exists but is invisible).
