@@ -145,8 +145,16 @@ export class QueryPlanner {
   ): Promise<Map<string, QuestionEvidence>> {
     const out = new Map<string, QuestionEvidence>();
     for (const question of questions) {
+      const query = buildSearchQuery(question.text);
+      if (query.length === 0) {
+        // All-stopword question: a degenerate empty query would search the
+        // whole workspace for nothing. Skip the call; downstream treats
+        // zero hits as no_evidence (fail-closed).
+        out.set(question.id, { questionId: question.id, hits: [], searchFailed: false });
+        continue;
+      }
       await this.gate();
-      const params: RtsSearchParams = { query: buildSearchQuery(question.text) };
+      const params: RtsSearchParams = { query };
       if (options.limit !== undefined) params.limit = options.limit;
       try {
         const { hits } = await this.rts.searchContext(params);
@@ -171,8 +179,12 @@ export class QueryPlanner {
 
     for (let i = 0; i < questions.length; i += OR_BATCH_SIZE) {
       const batch = questions.slice(i, i + OR_BATCH_SIZE);
+      const subQueries = batch
+        .map((question) => buildSearchQuery(question.text))
+        .filter((s) => s.length > 0);
+      if (subQueries.length === 0) continue;
       await this.gate();
-      const query = batch.map((question) => buildSearchQuery(question.text)).join(' OR ');
+      const query = subQueries.join(' OR ');
       const params: RtsSearchParams = { query };
       if (options.limit !== undefined) params.limit = options.limit;
       try {
@@ -183,8 +195,8 @@ export class QueryPlanner {
         }));
         for (const hit of hits) {
           const hitTokens = tokenSet(hit.snippet);
-          let bestId = batchTokens[0]?.id;
-          let bestScore = -1;
+          let bestId: string | undefined;
+          let bestScore = 0;
           for (const candidate of batchTokens) {
             const score = overlapScore(candidate.tokens, hitTokens);
             if (score > bestScore) {
@@ -192,6 +204,8 @@ export class QueryPlanner {
               bestId = candidate.id;
             }
           }
+          // Zero-overlap hits are dropped: misfiled evidence is worse than
+          // no evidence for a fail-closed pipeline.
           if (bestId !== undefined) out.get(bestId)?.hits.push(hit);
         }
       } catch {

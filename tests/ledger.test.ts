@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { Ledger } from '../src/core/ledger.js';
+import { tamperLedger } from './helpers/tamper.js';
 
 describe('Ledger', () => {
   let ledger: Ledger;
@@ -57,7 +58,7 @@ describe('Ledger', () => {
     ledger.append({ action: 'approve', actor: 'U1', questionId: 'q2', answerHashInput: 'b', evidenceRefs: [] });
     ledger.append({ action: 'edit', actor: 'U2', questionId: 'q3', answerHashInput: 'c', evidenceRefs: [] });
 
-    ledger._tamperForTest(1, { actor: 'U999' });
+    tamperLedger(ledger, 1, { actor: 'U999' });
 
     const result = ledger.verify();
 
@@ -69,7 +70,7 @@ describe('Ledger', () => {
     ledger.append({ action: 'approve', actor: 'U1', questionId: 'q1', answerHashInput: 'a', evidenceRefs: [] });
     ledger.append({ action: 'approve', actor: 'U1', questionId: 'q2', answerHashInput: 'b', evidenceRefs: [] });
 
-    ledger._tamperForTest(0, { answerHash: 'deadbeef'.repeat(8) }, { rehashSelf: true });
+    tamperLedger(ledger, 0, { answerHash: 'deadbeef'.repeat(8) }, { rehashSelf: true });
 
     const result = ledger.verify();
 

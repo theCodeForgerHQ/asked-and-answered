@@ -74,7 +74,14 @@ export class DraftingPipeline {
     const base = { questionId: question.id, questionText: question.text };
 
     // 1) Approved-answer library, with per-requester ACL revalidation.
-    const lookup = await this.library.findVerified(question.text, requesterId, this.visibility);
+    // A failing visibility check is indistinguishable from "not visible":
+    // degrade this question, never crash the run, never fail open.
+    let lookup;
+    try {
+      lookup = await this.library.findVerified(question.text, requesterId, this.visibility);
+    } catch {
+      return { ...base, state: 'needs_sme', reason: 'acl_degraded' };
+    }
     if (lookup.status === 'verified') {
       return {
         ...base,
@@ -120,6 +127,20 @@ export class DraftingPipeline {
       const h = allowed.get(p) as RtsHit;
       return { permalink: h.permalink, channelId: h.channelId, ts: h.ts };
     });
+
+    // THE INVARIANT applies to fresh drafts too: RTS results are normally
+    // scoped to the requesting user, but we do not trust that plumbing —
+    // every cited channel is re-checked for this requester before any
+    // drafted text is released. Check errors count as not visible.
+    for (const citation of citations) {
+      let visible = false;
+      try {
+        visible = await this.visibility.canSee(requesterId, citation);
+      } catch {
+        visible = false;
+      }
+      if (!visible) return { ...base, state: 'needs_sme', reason: 'acl_degraded' };
+    }
 
     return { ...base, state: 'grounded', answerText: draft.answerText.trim(), citations };
   }

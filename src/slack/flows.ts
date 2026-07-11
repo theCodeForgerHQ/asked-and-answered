@@ -44,11 +44,15 @@ export class ReviewSession {
       answerHashInput: r.answerText,
       evidenceRefs: (r.citations ?? []).map((c) => c.permalink),
     });
+    const citations = r.citations ?? [];
     const saved = this.deps.library.saveApproved({
       questionText: r.questionText,
       answerText: r.answerText,
-      citations: r.citations ?? [],
+      citations,
       approvedBy: actor,
+      // No workspace evidence means the approver is the provenance — label
+      // it as testimony instead of passing it off as evidence-backed.
+      kind: citations.length > 0 ? 'evidence' : 'sme_testimony',
     });
     r.state = 'verified';
     r.approvedBy = actor;

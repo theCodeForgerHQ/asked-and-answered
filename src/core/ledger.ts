@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import Database from 'better-sqlite3';
 
 export type LedgerAction = 'approve' | 'reject' | 'edit' | 'export' | 'degrade';
@@ -38,14 +38,24 @@ export interface VerifyResult {
 
 const GENESIS = 'GENESIS';
 
-function sha256(input: string): string {
-  return createHash('sha256').update(input).digest('hex');
+/**
+ * Content hashes are keyed (HMAC) so short, guessable answers ("Yes") can't
+ * be recovered from the ledger by dictionary attack. The chain hash itself
+ * is integrity-only and uses plain SHA-256 over a JSON-encoded field array
+ * (no delimiter-collision ambiguity).
+ */
+function contentHash(input: string): string {
+  const key = process.env.AA_LEDGER_KEY ?? 'aa-integrity-only-v1';
+  return createHmac('sha256', key).update(input).digest('hex');
 }
 
-function entryHash(e: Omit<LedgerEntry, 'hash'>): string {
-  return sha256(
-    [e.seq, e.ts, e.action, e.actor, e.questionId, e.answerHash, e.evidenceHash, e.prevHash].join('|'),
-  );
+/** Exported for the test-only tamper helper — not part of the public API surface. */
+export function computeEntryHash(e: Omit<LedgerEntry, 'hash'>): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([e.seq, e.ts, e.action, e.actor, e.questionId, e.answerHash, e.evidenceHash, e.prevHash]),
+    )
+    .digest('hex');
 }
 
 /**
@@ -83,35 +93,40 @@ export class Ledger {
   }
 
   append(input: AppendInput): LedgerEntry {
-    const prev = this.lastEntry();
-    const partial: Omit<LedgerEntry, 'hash'> = {
-      seq: (prev?.seq ?? -1) + 1,
-      ts: new Date().toISOString(),
-      action: input.action,
-      actor: input.actor,
-      questionId: input.questionId,
-      answerHash: sha256(input.answerHashInput),
-      evidenceHash: sha256(input.evidenceRefs.slice().sort().join('\n')),
-      prevHash: prev?.hash ?? GENESIS,
-    };
-    const entry: LedgerEntry = { ...partial, hash: entryHash(partial) };
-    this.db
-      .prepare(
-        `INSERT INTO ledger (seq, ts, action, actor, question_id, answer_hash, evidence_hash, prev_hash, hash)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        entry.seq,
-        entry.ts,
-        entry.action,
-        entry.actor,
-        entry.questionId,
-        entry.answerHash,
-        entry.evidenceHash,
-        entry.prevHash,
-        entry.hash,
-      );
-    return entry;
+    // Transactional read-modify-write: concurrent appends serialize instead
+    // of racing on seq/prevHash.
+    const insert = this.db.transaction((): LedgerEntry => {
+      const prev = this.lastEntry();
+      const partial: Omit<LedgerEntry, 'hash'> = {
+        seq: (prev?.seq ?? -1) + 1,
+        ts: new Date().toISOString(),
+        action: input.action,
+        actor: input.actor,
+        questionId: input.questionId,
+        answerHash: contentHash(input.answerHashInput),
+        evidenceHash: contentHash(input.evidenceRefs.slice().sort().join('\n')),
+        prevHash: prev?.hash ?? GENESIS,
+      };
+      const entry: LedgerEntry = { ...partial, hash: computeEntryHash(partial) };
+      this.db
+        .prepare(
+          `INSERT INTO ledger (seq, ts, action, actor, question_id, answer_hash, evidence_hash, prev_hash, hash)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          entry.seq,
+          entry.ts,
+          entry.action,
+          entry.actor,
+          entry.questionId,
+          entry.answerHash,
+          entry.evidenceHash,
+          entry.prevHash,
+          entry.hash,
+        );
+      return entry;
+    });
+    return insert();
   }
 
   entries(): LedgerEntry[] {
@@ -142,37 +157,19 @@ export class Ledger {
   verify(): VerifyResult {
     const all = this.entries();
     let prevHash = GENESIS;
+    let checked = 0;
     for (const e of all) {
       const { hash, ...rest } = e;
-      if (e.prevHash !== prevHash || entryHash(rest) !== hash) {
-        return { ok: false, entriesChecked: all.length, firstBadSeq: e.seq };
+      if (e.prevHash !== prevHash || computeEntryHash(rest) !== hash) {
+        return { ok: false, entriesChecked: checked, firstBadSeq: e.seq };
       }
+      checked++;
       prevHash = hash;
     }
-    return { ok: true, entriesChecked: all.length };
+    return { ok: true, entriesChecked: checked };
   }
 
   private lastEntry(): LedgerEntry | undefined {
     return this.entries().at(-1);
-  }
-
-  /**
-   * Test-only backdoor to simulate an attacker editing the underlying store.
-   * Never called from production code paths.
-   */
-  _tamperForTest(
-    seq: number,
-    changes: Partial<Pick<LedgerEntry, 'actor' | 'answerHash' | 'action'>>,
-    opts: { rehashSelf?: boolean } = {},
-  ): void {
-    const target = this.entries().find((e) => e.seq === seq);
-    if (!target) throw new Error(`no ledger entry with seq ${seq}`);
-    const updated = { ...target, ...changes };
-    const hash = opts.rehashSelf
-      ? entryHash({ ...updated })
-      : updated.hash;
-    this.db
-      .prepare('UPDATE ledger SET actor = ?, answer_hash = ?, action = ?, hash = ? WHERE seq = ?')
-      .run(updated.actor, updated.answerHash, updated.action, hash, seq);
   }
 }

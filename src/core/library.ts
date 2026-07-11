@@ -10,6 +10,14 @@ export interface Citation {
   ts: string;
 }
 
+/**
+ * Provenance of an approved answer:
+ * - 'evidence': grounded in Slack citations (must have ≥1 citation)
+ * - 'sme_testimony': typed by an SME with no workspace evidence — the
+ *   approver IS the provenance, and the label says so honestly.
+ */
+export type AnswerKind = 'evidence' | 'sme_testimony';
+
 export interface ApprovedAnswer {
   id: number;
   questionText: string;
@@ -17,6 +25,7 @@ export interface ApprovedAnswer {
   citations: Citation[];
   approvedBy: string;
   approvedAt: string;
+  kind: AnswerKind;
 }
 
 export interface SaveApprovedInput {
@@ -24,6 +33,7 @@ export interface SaveApprovedInput {
   answerText: string;
   citations: Citation[];
   approvedBy: string;
+  kind?: AnswerKind;
 }
 
 /**
@@ -80,7 +90,8 @@ export class AnswerLibrary {
            answer_text TEXT NOT NULL,
            citations_json TEXT NOT NULL,
            approved_by TEXT NOT NULL,
-           approved_at TEXT NOT NULL
+           approved_at TEXT NOT NULL,
+           kind TEXT NOT NULL DEFAULT 'evidence'
          )`,
       )
       .run();
@@ -95,11 +106,17 @@ export class AnswerLibrary {
   }
 
   saveApproved(input: SaveApprovedInput): ApprovedAnswer {
+    const kind: AnswerKind = input.kind ?? 'evidence';
+    if (kind === 'evidence' && input.citations.length === 0) {
+      throw new Error(
+        'evidence-kind answers require at least one citation — use kind "sme_testimony" for expert-typed answers',
+      );
+    }
     const approvedAt = new Date().toISOString();
     const info = this.db
       .prepare(
-        `INSERT INTO answers (question_text, question_norm, answer_text, citations_json, approved_by, approved_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO answers (question_text, question_norm, answer_text, citations_json, approved_by, approved_at, kind)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.questionText,
@@ -108,6 +125,7 @@ export class AnswerLibrary {
         JSON.stringify(input.citations),
         input.approvedBy,
         approvedAt,
+        kind,
       );
     return {
       id: Number(info.lastInsertRowid),
@@ -116,6 +134,7 @@ export class AnswerLibrary {
       citations: input.citations,
       approvedBy: input.approvedBy,
       approvedAt,
+      kind,
     };
   }
 
@@ -185,6 +204,7 @@ export class AnswerLibrary {
       citations_json: string;
       approved_by: string;
       approved_at: string;
+      kind: string;
     }>;
     return rows.map((row) => ({
       id: row.id,
@@ -193,39 +213,24 @@ export class AnswerLibrary {
       citations: JSON.parse(row.citations_json) as Citation[],
       approvedBy: row.approved_by,
       approvedAt: row.approved_at,
+      kind: (row.kind === 'sme_testimony' ? 'sme_testimony' : 'evidence') as AnswerKind,
     }));
   }
 
   private bestMatch(questionText: string): ApprovedAnswer | undefined {
     const norm = normalize(questionText);
-    const rows = this.db.prepare('SELECT * FROM answers').all() as Array<{
-      id: number;
-      question_text: string;
-      question_norm: string;
-      answer_text: string;
-      citations_json: string;
-      approved_by: string;
-      approved_at: string;
-    }>;
-
-    let best: { row: (typeof rows)[number]; score: number } | undefined;
     const queryTokens = tokens(questionText);
-    for (const row of rows) {
+
+    let best: { answer: ApprovedAnswer; score: number } | undefined;
+    for (const answer of this.allAnswers()) {
       const score =
-        row.question_norm === norm ? 1 : jaccard(queryTokens, tokens(row.question_text));
+        normalize(answer.questionText) === norm
+          ? 1
+          : jaccard(queryTokens, tokens(answer.questionText));
       if (score >= TOKEN_OVERLAP_THRESHOLD && (best === undefined || score > best.score)) {
-        best = { row, score };
+        best = { answer, score };
       }
     }
-    if (!best) return undefined;
-
-    return {
-      id: best.row.id,
-      questionText: best.row.question_text,
-      answerText: best.row.answer_text,
-      citations: JSON.parse(best.row.citations_json) as Citation[],
-      approvedBy: best.row.approved_by,
-      approvedAt: best.row.approved_at,
-    };
+    return best?.answer;
   }
 }
