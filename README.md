@@ -31,10 +31,22 @@
 
 ```bash
 npm install
-npm test          # hermetic — no network, no Slack
+npm test          # 85 hermetic tests — no network, no Slack
 npm run typecheck
+npm run smoke     # full loop offline: parse → draft → review → tamper → export
+npx tsx evals/run.ts   # measured eval numbers
 ```
 
-Evals, judge walkthrough, deployment, and architecture: see `docs/`.
+## Run against a real sandbox
+1. Create the Slack app from `slack/manifest.json`, install to a Developer Program sandbox.
+2. Copy `.env.example` → `.env`, fill in tokens + `ANTHROPIC_API_KEY`.
+3. `npm run dev` (Socket Mode). Seed evidence with `scripts/seed-sandbox.ts`.
+
+## Docs
+- `docs/ARCHITECTURE.md` — the diagram + where Slack AI / RTS / MCP sit
+- `docs/EVALS.md` — what's measured and how to reproduce
+- `docs/JUDGE_WALKTHROUGH.md` — 5-minute judge path
+- `docs/LIMITATIONS.md` — deliberate scope cuts
+- `docs/HANDOFF.md` — deployment + submission checklist
 
 License: MIT
