@@ -147,6 +147,49 @@ export class AnswerLibrary {
     return { status: 'verified', answer: match };
   }
 
+  /**
+   * Keyword search over approved answers (for the MCP tools). Unlike
+   * findVerified, callers of this API receive answers without per-user ACL
+   * checks — it is exposed only through the workspace-admin-installed MCP
+   * server, whose access is already workspace-scoped.
+   */
+  searchAnswers(query: string, limit = 5): ApprovedAnswer[] {
+    const queryTokens = tokens(query);
+    const scored: Array<{ answer: ApprovedAnswer; score: number }> = [];
+    for (const answer of this.allAnswers()) {
+      const score = jaccard(queryTokens, tokens(answer.questionText));
+      if (score >= 0.25) scored.push({ answer, score });
+    }
+    return scored
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((s) => s.answer);
+  }
+
+  getById(id: number): ApprovedAnswer | undefined {
+    return this.allAnswers().find((a) => a.id === id);
+  }
+
+  private allAnswers(): ApprovedAnswer[] {
+    const rows = this.db.prepare('SELECT * FROM answers').all() as Array<{
+      id: number;
+      question_text: string;
+      question_norm: string;
+      answer_text: string;
+      citations_json: string;
+      approved_by: string;
+      approved_at: string;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      questionText: row.question_text,
+      answerText: row.answer_text,
+      citations: JSON.parse(row.citations_json) as Citation[],
+      approvedBy: row.approved_by,
+      approvedAt: row.approved_at,
+    }));
+  }
+
   private bestMatch(questionText: string): ApprovedAnswer | undefined {
     const norm = normalize(questionText);
     const rows = this.db.prepare('SELECT * FROM answers').all() as Array<{
