@@ -367,6 +367,16 @@ app.action('export_xlsx', async ({ ack, body, client }) => {
   });
 });
 
+// Health endpoint for the deploy platform (HTTP mode only; Bolt's default
+// receiver exposes a raw Node server we can hang a route on).
+if (!process.env.SLACK_APP_TOKEN) {
+  const receiver = (app as unknown as { receiver?: { router?: { get?: (path: string, handler: (req: unknown, res: { writeHead: (n: number) => void; end: (s: string) => void }) => void) => void } } }).receiver;
+  receiver?.router?.get?.('/health', (_req, res) => {
+    res.writeHead(200);
+    res.end('ok');
+  });
+}
+
 const port = Number(process.env.PORT ?? 3000);
 await app.start(port);
 console.log(`⚡ Asked & Answered running (${process.env.SLACK_APP_TOKEN ? 'socket mode' : `http :${port}`})`);
