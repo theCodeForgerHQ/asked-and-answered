@@ -87,19 +87,22 @@ export function reviewTableBlocks(results: DraftResult[], opts: { page: number }
     });
   }
 
+  const toolbar: Block[] = [
+    {
+      type: 'button',
+      action_id: 'export_xlsx',
+      text: { type: 'plain_text', text: 'Export xlsx' },
+    },
+  ];
   if (hasNext) {
-    blocks.push({
-      type: 'actions',
-      elements: [
-        {
-          type: 'button',
-          action_id: 'table_next_page',
-          value: String(opts.page + 1),
-          text: { type: 'plain_text', text: 'Next page →' },
-        },
-      ],
+    toolbar.unshift({
+      type: 'button',
+      action_id: 'table_next_page',
+      value: String(opts.page + 1),
+      text: { type: 'plain_text', text: 'Next page →' },
     });
   }
+  blocks.push({ type: 'actions', elements: toolbar });
 
   return blocks;
 }
