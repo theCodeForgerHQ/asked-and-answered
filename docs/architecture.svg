@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" font-family="Inter, Segoe UI, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#5b6478"/>
+    </marker>
+    <style>
+      .box{rx:10;stroke-width:1.5;}
+      .lbl{font-size:15px;font-weight:600;fill:#f4f6fb;}
+      .sub{font-size:11px;fill:#c3cad9;}
+      .tech{font-size:11px;font-weight:700;}
+      .edge{stroke:#5b6478;stroke-width:1.5;fill:none;marker-end:url(#arrow);}
+      .note{font-size:11px;fill:#8a93a6;}
+      .title{font-size:22px;font-weight:800;fill:#f4f6fb;}
+      .invariant{font-size:12px;font-weight:700;fill:#ffd166;}
+    </style>
+  </defs>
+
+  <rect width="960" height="640" fill="#12141c"/>
+  <text x="32" y="44" class="title">Asked &amp; Answered — architecture</text>
+  <text x="32" y="66" class="note">Slack agent · security-questionnaire answering · fail-closed · evidence-cited</text>
+
+  <!-- Slack surface -->
+  <rect x="300" y="88" width="360" height="64" class="box" fill="#2b1d4d" stroke="#7c5cff"/>
+  <text x="480" y="116" text-anchor="middle" class="lbl">Slack — agent_view Messages tab</text>
+  <text x="480" y="136" text-anchor="middle" class="sub">upload xlsx/csv · streamed plan · Block Kit review table · /aa verify</text>
+  <text x="672" y="120" class="tech" fill="#7c5cff">Slack AI</text>
+
+  <!-- app.ts -->
+  <rect x="380" y="182" width="200" height="52" class="box" fill="#1c2740" stroke="#3d5a99"/>
+  <text x="480" y="205" text-anchor="middle" class="lbl">app.ts (Bolt)</text>
+  <text x="480" y="223" text-anchor="middle" class="sub">listeners · actions · SME routing</text>
+
+  <line x1="480" y1="152" x2="480" y2="182" class="edge"/>
+
+  <!-- Core row -->
+  <g>
+    <rect x="32" y="290" width="150" height="70" class="box" fill="#1c2740" stroke="#3d5a99"/>
+    <text x="107" y="318" text-anchor="middle" class="lbl">parse.ts</text>
+    <text x="107" y="338" text-anchor="middle" class="sub">xlsx/csv/text</text>
+    <text x="107" y="352" text-anchor="middle" class="sub">→ dedup questions</text>
+
+    <rect x="200" y="290" width="170" height="70" class="box" fill="#1c2740" stroke="#3d5a99"/>
+    <text x="285" y="314" text-anchor="middle" class="lbl">QueryPlanner</text>
+    <text x="285" y="333" text-anchor="middle" class="sub">RateBudget 10/min</text>
+    <text x="285" y="348" text-anchor="middle" class="sub">per-question · OR-batch</text>
+
+    <rect x="388" y="290" width="184" height="70" class="box" fill="#3a2118" stroke="#e07a3d"/>
+    <text x="480" y="312" text-anchor="middle" class="lbl">DraftingPipeline</text>
+    <text x="480" y="331" text-anchor="middle" class="sub">Verified · Grounded</text>
+    <text x="480" y="346" text-anchor="middle" class="sub">· Needs SME (fail-closed)</text>
+
+    <rect x="590" y="290" width="168" height="70" class="box" fill="#14342a" stroke="#3fae7f"/>
+    <text x="674" y="312" text-anchor="middle" class="lbl">AnswerLibrary</text>
+    <text x="674" y="331" text-anchor="middle" class="sub">approved answers +</text>
+    <text x="674" y="346" text-anchor="middle" class="sub">ACL revalidation</text>
+
+    <rect x="776" y="290" width="152" height="70" class="box" fill="#14342a" stroke="#3fae7f"/>
+    <text x="852" y="312" text-anchor="middle" class="lbl">Ledger</text>
+    <text x="852" y="331" text-anchor="middle" class="sub">hash-chained</text>
+    <text x="852" y="346" text-anchor="middle" class="sub">approvals</text>
+  </g>
+
+  <line x1="440" y1="234" x2="150" y2="290" class="edge"/>
+  <line x1="460" y1="234" x2="285" y2="290" class="edge"/>
+  <line x1="480" y1="234" x2="480" y2="290" class="edge"/>
+  <line x1="510" y1="234" x2="670" y2="290" class="edge"/>
+  <line x1="540" y1="234" x2="840" y2="290" class="edge"/>
+
+  <!-- RTS -->
+  <rect x="180" y="418" width="210" height="60" class="box" fill="#22183a" stroke="#7c5cff"/>
+  <text x="285" y="442" text-anchor="middle" class="lbl">Real-Time Search API</text>
+  <text x="285" y="461" text-anchor="middle" class="sub">assistant.search.context</text>
+  <text x="352" y="410" class="tech" fill="#7c5cff">RTS</text>
+  <line x1="285" y1="360" x2="285" y2="418" class="edge"/>
+
+  <!-- LLM -->
+  <rect x="404" y="418" width="152" height="60" class="box" fill="#3a2118" stroke="#e07a3d"/>
+  <text x="480" y="442" text-anchor="middle" class="lbl">AnthropicDrafter</text>
+  <text x="480" y="461" text-anchor="middle" class="sub">injection-hardened</text>
+  <line x1="480" y1="360" x2="480" y2="418" class="edge"/>
+
+  <!-- MCP -->
+  <rect x="590" y="418" width="338" height="60" class="box" fill="#22183a" stroke="#7c5cff"/>
+  <text x="759" y="442" text-anchor="middle" class="lbl">asked-answered-mcp (read-only, identity-bound)</text>
+  <text x="759" y="461" text-anchor="middle" class="sub">search_answers · get_answer_provenance</text>
+  <text x="898" y="410" class="tech" fill="#7c5cff">MCP</text>
+  <line x1="700" y1="360" x2="720" y2="418" class="edge"/>
+
+  <!-- Invariant banner -->
+  <rect x="180" y="520" width="600" height="52" rx="10" fill="#241f10" stroke="#ffd166"/>
+  <text x="480" y="544" text-anchor="middle" class="invariant">Invariant: no answer text ever flows to a requester who cannot see all of its evidence</text>
+  <text x="480" y="562" text-anchor="middle" class="note">enforced in library reuse · fresh drafts · MCP — all fail-closed · property-tested (200 runs)</text>
+
+  <text x="32" y="612" class="note">Zero-copy: library stores permalink pointers, ledger stores keyed HMAC hashes — never Slack content.</text>
+</svg>
