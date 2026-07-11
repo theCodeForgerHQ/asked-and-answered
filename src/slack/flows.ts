@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { AnswerLibrary, VisibilityChecker } from '../core/library.js';
 import type { Ledger } from '../core/ledger.js';
 import type { QueryPlanner } from '../core/planner.js';
@@ -19,6 +20,10 @@ export interface RunDeps {
  * the library so the next run starts more Verified than this one.
  */
 export class ReviewSession {
+  /** Unique per run; embedded in button payloads so a stale button from an
+   *  earlier run in the same thread cannot act on this run's answers. */
+  public readonly runId: string = randomUUID();
+
   constructor(
     public readonly results: DraftResult[],
     public readonly counts: PlanCounts,
@@ -32,8 +37,20 @@ export class ReviewSession {
     return r;
   }
 
-  approve(questionId: string, actor: string): DraftResult {
+  private assertRun(runId?: string): void {
+    if (runId !== undefined && runId !== this.runId) {
+      throw new Error(`stale action: button belongs to a different run (${runId} ≠ ${this.runId})`);
+    }
+  }
+
+  approve(questionId: string, actor: string, runId?: string): DraftResult {
+    this.assertRun(runId);
     const r = this.mustFind(questionId);
+    if (r.state === 'verified') {
+      // Idempotent: re-clicking Approve on an already-verified answer is a
+      // no-op, not a duplicate library row + ledger entry.
+      return r;
+    }
     if (!r.answerText) {
       throw new Error(`question ${questionId} has no draft to approve — route it to an SME instead`);
     }
@@ -61,7 +78,8 @@ export class ReviewSession {
     return r;
   }
 
-  reject(questionId: string, actor: string): DraftResult {
+  reject(questionId: string, actor: string, runId?: string): DraftResult {
+    this.assertRun(runId);
     const r = this.mustFind(questionId);
     this.deps.ledger.append({
       action: 'reject',
@@ -79,7 +97,8 @@ export class ReviewSession {
     return r;
   }
 
-  edit(questionId: string, actor: string, newText: string): DraftResult {
+  edit(questionId: string, actor: string, newText: string, runId?: string): DraftResult {
+    this.assertRun(runId);
     const r = this.mustFind(questionId);
     this.deps.ledger.append({
       action: 'edit',
@@ -93,12 +112,13 @@ export class ReviewSession {
   }
 
   /** An SME answers a routed question directly; their answer is approved in one step. */
-  smeProvide(questionId: string, smeId: string, answerText: string): DraftResult {
+  smeProvide(questionId: string, smeId: string, answerText: string, runId?: string): DraftResult {
+    this.assertRun(runId);
     const r = this.mustFind(questionId);
     r.answerText = answerText;
     r.state = 'grounded';
     delete r.reason;
-    return this.approve(questionId, smeId);
+    return this.approve(questionId, smeId, this.runId);
   }
 
   recount(): PlanCounts {

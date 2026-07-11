@@ -81,8 +81,8 @@ assert.equal(insurance?.state, 'needs_sme');
 assert.equal(insurance?.answerText, undefined);
 
 // ---- Review actions ----
-run1.approve('q1', 'U_SME');
-run1.smeProvide(insurance?.questionId ?? '', 'U_SME', 'Yes, $5M coverage via Acme, renewed annually.');
+run1.approve('q1', 'U_SME', run1.runId);
+run1.smeProvide(insurance?.questionId ?? '', 'U_SME', 'Yes, $5M coverage via Acme, renewed annually.', run1.runId);
 assert.equal(deps.ledger.entries().length, 2, 'two ledger entries after review');
 
 // ---- Run 2: compounding ----

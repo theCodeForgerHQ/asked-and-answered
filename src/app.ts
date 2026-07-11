@@ -34,6 +34,10 @@ function required(name: string): string {
   return v;
 }
 
+// Fail fast if the ledger's HMAC key is unset in a real deployment — a
+// hardcoded fallback would defeat the dictionary-attack protection.
+required('AA_LEDGER_KEY');
+
 const app = new App({
   token: required('SLACK_BOT_TOKEN'),
   signingSecret: required('SLACK_SIGNING_SECRET'),
@@ -48,8 +52,36 @@ const ledger = Ledger.atPath(dbPath.replace(/\.db$/, '-ledger.db'));
 const tokens = new ActionTokenStore();
 const drafter = new AnthropicDrafter();
 
-/** Sessions keyed by `${channel}:${thread_ts}` so button clicks find their run. */
-const sessions = new Map<string, ReviewSession>();
+/**
+ * Sessions keyed by runId (unique per questionnaire run), so a stale button
+ * from an earlier run in the same thread can never resolve to a newer run.
+ * TTL-evicted to bound memory.
+ */
+const SESSION_TTL_MS = 6 * 60 * 60 * 1000;
+const sessions = new Map<string, { session: ReviewSession; at: number }>();
+
+function putSession(session: ReviewSession): void {
+  const now = Date.now();
+  for (const [id, entry] of sessions) if (now - entry.at > SESSION_TTL_MS) sessions.delete(id);
+  sessions.set(session.runId, { session, at: now });
+}
+
+/** Parse a button value of the form `runId:questionId`. */
+function parseValue(value: string | undefined): { runId: string; questionId: string } | undefined {
+  if (!value) return undefined;
+  const idx = value.indexOf(':');
+  if (idx === -1) return undefined;
+  return { runId: value.slice(0, idx), questionId: value.slice(idx + 1) };
+}
+
+/** Resolve the session a button belongs to (by its embedded runId). */
+function sessionForValue(value: string | undefined): { session: ReviewSession; questionId: string } | undefined {
+  const parsed = parseValue(value);
+  if (!parsed) return undefined;
+  const entry = sessions.get(parsed.runId);
+  if (!entry) return undefined;
+  return { session: entry.session, questionId: parsed.questionId };
+}
 
 function depsForUser(userId: string): RunDeps {
   const rts = new SlackRtsClient(
@@ -146,8 +178,13 @@ app.message(async ({ message, client }) => {
     if (file?.url_private_download) {
       const response = await fetch(file.url_private_download, {
         headers: { Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}` },
+        signal: AbortSignal.timeout(15_000),
       });
+      const MAX_BYTES = 10 * 1024 * 1024;
+      const declared = Number(response.headers.get('content-length') ?? '0');
+      if (declared > MAX_BYTES) throw new Error('file too large (max 10 MB)');
       const buf = Buffer.from(await response.arrayBuffer());
+      if (buf.length > MAX_BYTES) throw new Error('file too large (max 10 MB)');
       parsed =
         file.filetype === 'csv' || file.name?.endsWith('.csv')
           ? parseCsv(buf.toString('utf8'))
@@ -171,48 +208,56 @@ app.message(async ({ message, client }) => {
 
   try {
     const session = await runQuestionnaire(parsed, msg.user, depsForUser(msg.user), () => {});
-    sessions.set(`${msg.channel}:${threadTs}`, session);
+    putSession(session);
     await say(planSummaryText(session.counts));
-    await say('Review', reviewTableBlocks(session.results, { page: 0 }) as unknown[]);
+    await say('Review', reviewTableBlocks(session.results, { page: 0, runId: session.runId }) as unknown[]);
   } catch (err) {
     await say(`Something went wrong during the run: ${(err as Error).message}`);
   }
 });
 
-function sessionFor(body: { channel?: { id?: string }; message?: { thread_ts?: string; ts?: string } }): ReviewSession | undefined {
-  const channel = body.channel?.id;
-  const thread = body.message?.thread_ts ?? body.message?.ts;
-  if (!channel || !thread) return undefined;
-  return sessions.get(`${channel}:${thread}`);
+/** Shorthand for the channel/thread on an interaction body. */
+function target(body: unknown): { channel: string; thread: string } | undefined {
+  const b = body as { channel?: { id?: string }; message?: { thread_ts?: string; ts?: string } };
+  if (!b.channel?.id) return undefined;
+  return { channel: b.channel.id, thread: b.message?.thread_ts ?? b.message?.ts ?? '' };
 }
 
 app.action('open_answer_card', async ({ ack, body, client, action }) => {
   await ack();
-  const session = sessionFor(body as never);
-  const questionId = (action as { value?: string }).value ?? '';
-  const result = session?.results.find((r) => r.questionId === questionId);
-  const b = body as { channel?: { id?: string }; message?: { thread_ts?: string; ts?: string } };
-  if (!session || !result || !b.channel?.id) return;
-  await client.chat.postMessage({
-    channel: b.channel.id,
-    thread_ts: b.message?.thread_ts ?? b.message?.ts ?? '',
-    text: result.questionText,
-    blocks: answerCardBlocks(result) as never,
-  });
+  try {
+    const resolved = sessionForValue((action as { value?: string }).value);
+    const t = target(body);
+    if (!resolved || !t) return;
+    const result = resolved.session.results.find((r) => r.questionId === resolved.questionId);
+    if (!result) return;
+    await client.chat.postMessage({
+      channel: t.channel,
+      thread_ts: t.thread,
+      text: result.questionText,
+      blocks: answerCardBlocks(result, resolved.session.runId) as never,
+    });
+  } catch (err) {
+    console.error('open_answer_card failed', err);
+  }
 });
 
 app.action('table_next_page', async ({ ack, body, client, action }) => {
   await ack();
-  const session = sessionFor(body as never);
-  const page = Number((action as { value?: string }).value ?? '0');
-  const b = body as { channel?: { id?: string }; message?: { thread_ts?: string; ts?: string } };
-  if (!session || !b.channel?.id) return;
-  await client.chat.postMessage({
-    channel: b.channel.id,
-    thread_ts: b.message?.thread_ts ?? b.message?.ts ?? '',
-    text: 'Review (continued)',
-    blocks: reviewTableBlocks(session.results, { page }) as never,
-  });
+  try {
+    const resolved = sessionForValue((action as { value?: string }).value);
+    const page = Number(parseValue((action as { value?: string }).value)?.questionId ?? '0');
+    const t = target(body);
+    if (!resolved || !t || Number.isNaN(page)) return;
+    await client.chat.postMessage({
+      channel: t.channel,
+      thread_ts: t.thread,
+      text: 'Review (continued)',
+      blocks: reviewTableBlocks(resolved.session.results, { page, runId: resolved.session.runId }) as never,
+    });
+  } catch (err) {
+    console.error('table_next_page failed', err);
+  }
 });
 
 for (const [actionId, verb] of [
@@ -221,27 +266,26 @@ for (const [actionId, verb] of [
 ] as const) {
   app.action(actionId, async ({ ack, body, client, action }) => {
     await ack();
-    const session = sessionFor(body as never);
-    const questionId = (action as { value?: string }).value ?? '';
+    const resolved = sessionForValue((action as { value?: string }).value);
     const userId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
-    const b = body as { channel?: { id?: string }; message?: { thread_ts?: string; ts?: string } };
-    if (!session || !b.channel?.id) return;
+    const t = target(body);
+    if (!resolved || !t) return;
     try {
-      const result = verb === 'approve' ? session.approve(questionId, userId) : session.reject(questionId, userId);
-      const counts = session.recount();
+      if (verb === 'approve') resolved.session.approve(resolved.questionId, userId, resolved.session.runId);
+      else resolved.session.reject(resolved.questionId, userId, resolved.session.runId);
+      const counts = resolved.session.recount();
       await client.chat.postMessage({
-        channel: b.channel.id,
-        thread_ts: b.message?.thread_ts ?? b.message?.ts ?? '',
+        channel: t.channel,
+        thread_ts: t.thread,
         text:
           verb === 'approve'
             ? `:white_check_mark: Approved by <@${userId}> — saved to the answer library.\n${planSummaryText(counts)}`
             : `:no_entry: Rejected by <@${userId}> — routed back to humans.\n${planSummaryText(counts)}`,
       });
-      void result;
     } catch (err) {
       await client.chat.postMessage({
-        channel: b.channel.id,
-        thread_ts: b.message?.thread_ts ?? b.message?.ts ?? '',
+        channel: t.channel,
+        thread_ts: t.thread,
         text: (err as Error).message,
       });
     }
@@ -250,122 +294,181 @@ for (const [actionId, verb] of [
 
 app.action('route_to_sme', async ({ ack, body, client, action }) => {
   await ack();
-  const session = sessionFor(body as never);
-  const questionId = (action as { value?: string }).value ?? '';
-  const result = session?.results.find((r) => r.questionId === questionId);
-  const requester = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
-  const b = body as { channel?: { id?: string }; message?: { thread_ts?: string; ts?: string } };
-  if (!session || !result || !b.channel?.id) return;
-  // v1: route to the requester-chosen expert via a users_select in the thread.
-  await client.chat.postMessage({
-    channel: b.channel.id,
-    thread_ts: b.message?.thread_ts ?? b.message?.ts ?? '',
-    text: 'Pick the expert to ask',
-    blocks: [
-      {
-        type: 'section',
-        text: { type: 'mrkdwn', text: `Who should answer:\n*${result.questionText}*` },
-        accessory: {
-          type: 'users_select',
-          action_id: 'sme_selected',
-          placeholder: { type: 'plain_text', text: 'Choose an expert' },
+  try {
+    const value = (action as { value?: string }).value;
+    const resolved = sessionForValue(value);
+    const requester = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
+    const t = target(body);
+    if (!resolved || !t) return;
+    const result = resolved.session.results.find((r) => r.questionId === resolved.questionId);
+    if (!result) return;
+    await client.chat.postMessage({
+      channel: t.channel,
+      thread_ts: t.thread,
+      text: 'Pick the expert to ask',
+      blocks: [
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: `Who should answer:\n*${result.questionText}*` },
+          accessory: {
+            type: 'users_select',
+            action_id: 'sme_selected',
+            placeholder: { type: 'plain_text', text: 'Choose an expert' },
+          },
         },
-      },
-      {
-        type: 'context',
-        elements: [{ type: 'mrkdwn', text: `question:${questionId} requester:<@${requester}>` }],
-      },
-    ] as never,
-  });
+        {
+          type: 'context',
+          // Carry the runId:questionId so the pick resolves to the exact run.
+          elements: [{ type: 'mrkdwn', text: `ref:${value} requester:<@${requester}>` }],
+        },
+      ] as never,
+    });
+  } catch (err) {
+    console.error('route_to_sme failed', err);
+  }
 });
 
 app.action('sme_selected', async ({ ack, body, client, action }) => {
   await ack();
-  const smeId = (action as { selected_user?: string }).selected_user;
-  const b = body as {
-    user?: { id?: string };
-    channel?: { id?: string };
-    message?: { thread_ts?: string; ts?: string; blocks?: Array<{ elements?: Array<{ text?: string }> }> };
-  };
-  const contextText = b.message?.blocks?.find((bl) => bl.elements)?.elements?.[0]?.text ?? '';
-  const questionId = /question:(\S+)/.exec(contextText)?.[1] ?? '';
-  const session = sessionFor(body as never);
-  const result = session?.results.find((r) => r.questionId === questionId);
-  if (!smeId || !session || !result) return;
+  try {
+    const smeId = (action as { selected_user?: string }).selected_user;
+    const b = body as {
+      user?: { id?: string };
+      channel?: { id?: string };
+      message?: { thread_ts?: string; ts?: string; blocks?: Array<{ elements?: Array<{ text?: string }> }> };
+    };
+    const contextText = b.message?.blocks?.find((bl) => bl.elements)?.elements?.[0]?.text ?? '';
+    const ref = /ref:(\S+)/.exec(contextText)?.[1];
+    const resolved = sessionForValue(ref);
+    if (!smeId || !resolved) return;
+    const result = resolved.session.results.find((r) => r.questionId === resolved.questionId);
+    if (!result) return;
 
-  const dm = await client.conversations.open({ users: smeId });
-  if (dm.channel?.id) {
-    await client.chat.postMessage({
-      channel: dm.channel.id,
-      text: `You've been asked to answer a questionnaire question`,
-      blocks: smeRequestBlocks({
-        questionText: result.questionText,
-        requesterId: b.user?.id ?? 'unknown',
-        questionId,
-      }) as never,
-    });
-    if (b.channel?.id) {
+    const dm = await client.conversations.open({ users: smeId });
+    if (dm.channel?.id) {
       await client.chat.postMessage({
-        channel: b.channel.id,
-        thread_ts: b.message?.thread_ts ?? b.message?.ts ?? '',
+        channel: dm.channel.id,
+        text: `You've been asked to answer a questionnaire question`,
+        blocks: smeRequestBlocks({
+          questionText: result.questionText,
+          requesterId: b.user?.id ?? 'unknown',
+          questionId: ref ?? '',
+        }) as never,
+      });
+    }
+    const t = target(body);
+    if (t) {
+      await client.chat.postMessage({
+        channel: t.channel,
+        thread_ts: t.thread,
         text: `:incoming_envelope: Routed to <@${smeId}>.`,
       });
     }
+  } catch (err) {
+    console.error('sme_selected failed', err);
   }
 });
 
 app.action('sme_provide_answer', async ({ ack, body, client, action }) => {
   await ack();
-  const questionId = (action as { value?: string }).value ?? '';
+  try {
+    // value is the runId:questionId ref threaded from smeRequestBlocks.
+    const ref = (action as { value?: string }).value ?? '';
+    await openAnswerModal(client, (body as { trigger_id: string }).trigger_id, 'sme_answer_modal', ref, '');
+  } catch (err) {
+    console.error('sme_provide_answer failed', err);
+  }
+});
+
+app.action('edit_answer', async ({ ack, body, client, action }) => {
+  await ack();
+  try {
+    const value = (action as { value?: string }).value;
+    const resolved = sessionForValue(value);
+    if (!resolved) return;
+    const result = resolved.session.results.find((r) => r.questionId === resolved.questionId);
+    await openAnswerModal(client, (body as { trigger_id: string }).trigger_id, 'edit_answer_modal', value ?? '', result?.answerText ?? '');
+  } catch (err) {
+    console.error('edit_answer failed', err);
+  }
+});
+
+app.view('sme_answer_modal', async ({ ack, body, view }) => {
+  await ack();
+  try {
+    const resolved = sessionForValue(view.private_metadata);
+    const answer = view.state.values.answer_block?.answer_input?.value ?? '';
+    if (!resolved || !answer.trim()) return;
+    resolved.session.smeProvide(resolved.questionId, body.user.id, answer, resolved.session.runId);
+  } catch (err) {
+    console.error('sme_answer_modal failed', err);
+  }
+});
+
+app.view('edit_answer_modal', async ({ ack, body, view }) => {
+  await ack();
+  try {
+    const resolved = sessionForValue(view.private_metadata);
+    const answer = view.state.values.answer_block?.answer_input?.value ?? '';
+    if (!resolved || !answer.trim()) return;
+    resolved.session.edit(resolved.questionId, body.user.id, answer, resolved.session.runId);
+  } catch (err) {
+    console.error('edit_answer_modal failed', err);
+  }
+});
+
+app.action('export_xlsx', async ({ ack, body, client, action }) => {
+  await ack();
+  const t = target(body);
+  try {
+    // export button value is `runId:` (no question); fall back to any-in-thread not needed.
+    const resolved = sessionForValue((action as { value?: string }).value);
+    if (!resolved || !t) return;
+    const buf = await exportXlsx(resolved.session.results);
+    await client.files.uploadV2({
+      channel_id: t.channel,
+      thread_ts: t.thread,
+      filename: 'questionnaire-asked-and-answered.xlsx',
+      file: buf,
+      initial_comment: 'Completed questionnaire — every answer cited and approval-logged.',
+    });
+  } catch (err) {
+    if (t) await client.chat.postMessage({ channel: t.channel, thread_ts: t.thread, text: `Export failed: ${(err as Error).message}` });
+  }
+});
+
+/** Opens the shared answer-input modal, prefilled and tagged with a run ref. */
+async function openAnswerModal(
+  client: typeof app.client,
+  triggerId: string,
+  callbackId: string,
+  ref: string,
+  initial: string,
+): Promise<void> {
   await client.views.open({
-    trigger_id: (body as { trigger_id: string }).trigger_id,
+    trigger_id: triggerId,
     view: {
       type: 'modal',
-      callback_id: 'sme_answer_modal',
-      private_metadata: questionId,
+      callback_id: callbackId,
+      private_metadata: ref,
       title: { type: 'plain_text', text: 'Provide an answer' },
       submit: { type: 'plain_text', text: 'Approve & save' },
       blocks: [
         {
           type: 'input',
           block_id: 'answer_block',
-          label: { type: 'plain_text', text: 'Your answer (it will be saved as Verified)' },
-          element: { type: 'plain_text_input', action_id: 'answer_input', multiline: true },
+          label: { type: 'plain_text', text: 'Your answer (saved as Verified)' },
+          element: {
+            type: 'plain_text_input',
+            action_id: 'answer_input',
+            multiline: true,
+            ...(initial ? { initial_value: initial } : {}),
+          },
         },
       ],
     },
   });
-});
-
-app.view('sme_answer_modal', async ({ ack, body, view }) => {
-  await ack();
-  const questionId = view.private_metadata;
-  const answer = view.state.values.answer_block?.answer_input?.value ?? '';
-  const smeId = body.user.id;
-  // Find the session containing this question (SME answers arrive via DM,
-  // outside the original thread).
-  for (const session of sessions.values()) {
-    if (session.results.some((r) => r.questionId === questionId && r.state === 'needs_sme')) {
-      session.smeProvide(questionId, smeId, answer);
-      break;
-    }
-  }
-});
-
-app.action('export_xlsx', async ({ ack, body, client }) => {
-  await ack();
-  const session = sessionFor(body as never);
-  const b = body as { channel?: { id?: string }; message?: { thread_ts?: string; ts?: string } };
-  if (!session || !b.channel?.id) return;
-  const buf = await exportXlsx(session.results);
-  await client.files.uploadV2({
-    channel_id: b.channel.id,
-    thread_ts: b.message?.thread_ts ?? b.message?.ts ?? '',
-    filename: 'questionnaire-asked-and-answered.xlsx',
-    file: buf,
-    initial_comment: 'Completed questionnaire — every answer cited and approval-logged.',
-  });
-});
+}
 
 // Health endpoint for the deploy platform (HTTP mode only; Bolt's default
 // receiver exposes a raw Node server we can hang a route on).

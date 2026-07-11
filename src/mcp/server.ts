@@ -26,10 +26,11 @@ export interface McpServerOptions {
 const REDACTED = '[redacted — evidence not verifiable for the bound identity]';
 
 export function buildMcpServer(library: AnswerLibrary, opts?: McpServerOptions): McpServer {
-  const identity = opts?.identity ?? 'local-admin';
-  // Default stdio mode is for the workspace admin running it locally against
-  // their own database; explicit binding is required for anything shared.
-  const visibility: VisibilityChecker = opts?.visibility ?? { canSee: async () => true };
+  const identity = opts?.identity ?? 'unbound';
+  // FAIL CLOSED: with no explicit visibility, evidence-backed answers are
+  // redacted. An unconfigured server must never serve answer text it cannot
+  // prove the caller may see. Callers opt into disclosure explicitly.
+  const visibility: VisibilityChecker = opts?.visibility ?? { canSee: async () => false };
 
   async function redactIfBlocked(answer: ApprovedAnswer): Promise<string> {
     if (answer.kind === 'sme_testimony') return answer.answerText;
@@ -114,11 +115,25 @@ export function buildMcpServer(library: AnswerLibrary, opts?: McpServerOptions):
 }
 
 // Entrypoint: `npm run mcp` serves the library over stdio.
+//
+// Visibility must be chosen explicitly — the server refuses to guess:
+// - AA_MCP_TRUST_LOCAL=1  → single-operator mode: the caller is the DB owner,
+//   so all approved answers are disclosed (canSee = true). Use only for a
+//   local, single-user MCP client against your own database.
+// - otherwise             → fail closed: evidence-backed answers are redacted
+//   (sme_testimony answers, which have no evidence to gate, still show).
 const isMain = process.argv[1]?.endsWith('mcp/server.ts') || process.argv[1]?.endsWith('mcp/server.js');
 if (isMain) {
   const dbPath = process.env.AA_DB_PATH ?? 'asked-and-answered.db';
-  const server = buildMcpServer(AnswerLibrary.atPath(dbPath));
+  const trustLocal = process.env.AA_MCP_TRUST_LOCAL === '1';
+  const server = buildMcpServer(AnswerLibrary.atPath(dbPath), {
+    identity: process.env.AA_MCP_IDENTITY ?? 'local-operator',
+    visibility: { canSee: async () => trustLocal },
+  });
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`asked-answered-mcp serving ${dbPath} over stdio`);
+  console.error(
+    `asked-answered-mcp serving ${dbPath} over stdio — ` +
+      (trustLocal ? 'LOCAL TRUST (all answers disclosed)' : 'fail-closed (evidence-backed answers redacted)'),
+  );
 }

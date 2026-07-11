@@ -74,6 +74,38 @@ describe('CRITICAL-2: MCP server is identity-bound and redacts unverifiable answ
   });
 });
 
+describe('CRITICAL-regression: MCP server fails CLOSED when visibility is unconfigured', () => {
+  async function client(opts?: Parameters<typeof buildMcpServer>[1]) {
+    const library = AnswerLibrary.inMemory();
+    library.saveApproved({
+      questionText: 'Where is customer data hosted?',
+      answerText: 'SECRET_REGION',
+      citations: [{ permalink: 'https://s.example/priv', channelId: 'C_PRIVATE', ts: '1.0' }],
+      approvedBy: 'U_SME',
+    });
+    const server = buildMcpServer(library, opts);
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const c = new Client({ name: 't', version: '0' });
+    await Promise.all([server.connect(st), c.connect(ct)]);
+    return c;
+  }
+
+  test('no options → evidence-backed answer text is redacted (fail closed, not open)', async () => {
+    const c = await client();
+    const result = await c.callTool({ name: 'search_answers', arguments: { query: 'customer data hosted' } });
+    const text = (result.content as Array<{ type: string; text: string }>)[0]?.text ?? '';
+    expect(text).not.toContain('SECRET_REGION');
+    expect(text).toMatch(/redacted/i);
+  });
+
+  test('explicit allow-all visibility → answer text is served (opt-in)', async () => {
+    const c = await client({ identity: 'U', visibility: { canSee: async () => true } });
+    const result = await c.callTool({ name: 'search_answers', arguments: { query: 'customer data hosted' } });
+    const text = (result.content as Array<{ type: string; text: string }>)[0]?.text ?? '';
+    expect(text).toContain('SECRET_REGION');
+  });
+});
+
 describe('CRITICAL-3: production Ledger class has no tamper surface', () => {
   test('Ledger exposes no _tamperForTest method', () => {
     const ledger = Ledger.inMemory();

@@ -125,4 +125,28 @@ describe('ReviewSession actions', () => {
   test('approving a needs_sme row without SME text is impossible', () => {
     expect(() => session.approve('missing', 'U_SME')).toThrow();
   });
+
+  test('each run has a unique runId so stale buttons cannot cross sessions', async () => {
+    const parsed = parseText('Do you encrypt data at rest?');
+    const s1 = await runQuestionnaire(parsed, 'U_REQ', deps(), () => {});
+    const s2 = await runQuestionnaire(parsed, 'U_REQ', deps(), () => {});
+    expect(s1.runId).toBeTruthy();
+    expect(s1.runId).not.toBe(s2.runId);
+  });
+
+  test('acting with a mismatched runId is rejected', () => {
+    expect(() => session.approve('q1', 'U_SME', 'not-this-run')).toThrow(/stale|run/i);
+  });
+
+  test('acting with the correct runId succeeds', () => {
+    expect(() => session.approve('q1', 'U_SME', session.runId)).not.toThrow();
+  });
+
+  test('re-approving an already-verified answer is a no-op (no duplicate ledger/library rows)', () => {
+    session.approve('q1', 'U_SME');
+    session.approve('q1', 'U_SME');
+    session.approve('q1', 'U_SME');
+    expect(d.ledger.entries()).toHaveLength(1);
+    expect(d.library.searchAnswers('encrypt data at rest')).toHaveLength(1);
+  });
 });

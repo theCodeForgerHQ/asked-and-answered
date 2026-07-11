@@ -17,7 +17,9 @@ describe('asked-answered-mcp', () => {
       approvedBy: 'U_SME',
     });
 
-    const server = buildMcpServer(library);
+    // Explicit allow-all visibility: these tests exercise tool contracts, not
+    // the ACL redaction (that lives in review-fixes.test.ts).
+    const server = buildMcpServer(library, { identity: 'U_TEST', visibility: { canSee: async () => true } });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     client = new Client({ name: 'test-client', version: '0.0.1' });
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);

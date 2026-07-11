@@ -51,7 +51,16 @@ export function planSummaryText(c: PlanCounts): string {
   );
 }
 
-export function reviewTableBlocks(results: DraftResult[], opts: { page: number }): Block[] {
+/** Encodes run + question into a button value so a stale button can't cross runs. */
+function actionValue(runId: string, questionId: string): string {
+  return `${runId}:${questionId}`;
+}
+
+export function reviewTableBlocks(
+  results: DraftResult[],
+  opts: { page: number; runId?: string },
+): Block[] {
+  const runId = opts.runId ?? '';
   const start = opts.page * PAGE_SIZE;
   const pageResults = results.slice(start, start + PAGE_SIZE);
   const hasNext = start + PAGE_SIZE < results.length;
@@ -81,7 +90,7 @@ export function reviewTableBlocks(results: DraftResult[], opts: { page: number }
       accessory: {
         type: 'button',
         action_id: 'open_answer_card',
-        value: r.questionId,
+        value: actionValue(runId, r.questionId),
         text: { type: 'plain_text', text: 'Review' },
       },
     });
@@ -91,6 +100,7 @@ export function reviewTableBlocks(results: DraftResult[], opts: { page: number }
     {
       type: 'button',
       action_id: 'export_xlsx',
+      value: actionValue(runId, 'export'),
       text: { type: 'plain_text', text: 'Export xlsx' },
     },
   ];
@@ -98,7 +108,8 @@ export function reviewTableBlocks(results: DraftResult[], opts: { page: number }
     toolbar.unshift({
       type: 'button',
       action_id: 'table_next_page',
-      value: String(opts.page + 1),
+      // questionId slot carries the next page number for this run.
+      value: actionValue(runId, String(opts.page + 1)),
       text: { type: 'plain_text', text: 'Next page →' },
     });
   }
@@ -107,7 +118,8 @@ export function reviewTableBlocks(results: DraftResult[], opts: { page: number }
   return blocks;
 }
 
-export function answerCardBlocks(r: DraftResult): Block[] {
+export function answerCardBlocks(r: DraftResult, runId = ''): Block[] {
+  const value = actionValue(runId, r.questionId);
   const blocks: Block[] = [
     {
       type: 'section',
@@ -130,7 +142,7 @@ export function answerCardBlocks(r: DraftResult): Block[] {
           {
             type: 'button',
             action_id: 'route_to_sme',
-            value: r.questionId,
+            value,
             style: 'primary',
             text: { type: 'plain_text', text: 'Route to an expert' },
           },
@@ -170,20 +182,20 @@ export function answerCardBlocks(r: DraftResult): Block[] {
       {
         type: 'button',
         action_id: 'approve_answer',
-        value: r.questionId,
+        value,
         style: 'primary',
         text: { type: 'plain_text', text: 'Approve' },
       },
       {
         type: 'button',
         action_id: 'edit_answer',
-        value: r.questionId,
+        value,
         text: { type: 'plain_text', text: 'Edit' },
       },
       {
         type: 'button',
         action_id: 'reject_answer',
-        value: r.questionId,
+        value,
         style: 'danger',
         text: { type: 'plain_text', text: 'Reject' },
       },
