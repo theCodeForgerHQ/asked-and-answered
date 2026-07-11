@@ -155,10 +155,16 @@ export class AnswerLibrary {
    */
   searchAnswers(query: string, limit = 5): ApprovedAnswer[] {
     const queryTokens = tokens(query);
+    if (queryTokens.size === 0) return [];
     const scored: Array<{ answer: ApprovedAnswer; score: number }> = [];
     for (const answer of this.allAnswers()) {
-      const score = jaccard(queryTokens, tokens(answer.questionText));
-      if (score >= 0.25) scored.push({ answer, score });
+      // Query coverage, not symmetric similarity: a one-word query should
+      // match any stored question containing that word.
+      const docTokens = tokens(answer.questionText + ' ' + answer.answerText);
+      let covered = 0;
+      for (const t of queryTokens) if (docTokens.has(t)) covered++;
+      const score = covered / queryTokens.size;
+      if (score >= 0.5) scored.push({ answer, score });
     }
     return scored
       .sort((a, b) => b.score - a.score)

@@ -19,7 +19,8 @@ export type NeedsSmeReason =
   | 'llm_refused'
   | 'invalid_citations'
   | 'acl_degraded'
-  | 'llm_error';
+  | 'llm_error'
+  | 'rejected';
 
 export interface DraftResult {
   questionId: string;
