@@ -1,0 +1,58 @@
+{
+  "_comment": "Asked & Answered — Slack app manifest (App A, internal/sandbox). Import at api.slack.com/apps → Create New App → From a manifest. Verify agent_view + scopes against the live sandbox in spike S1 before relying on them.",
+  "display_information": {
+    "name": "Asked & Answered",
+    "description": "Turns your Slack history into completed security questionnaires — cited, approved, fail-closed.",
+    "background_color": "#1a1d29",
+    "long_description": "Every security questionnaire asks questions your team already answered somewhere in Slack. Asked & Answered finds that evidence with Real-Time Search, drafts cited answers, and routes anything it can't prove to a human. It never invents a compliance answer. Approved answers compound into a reusable, permission-aware library, and every approval is logged to a tamper-evident ledger."
+  },
+  "features": {
+    "app_home": {
+      "home_tab_enabled": false,
+      "messages_tab_enabled": true,
+      "messages_tab_read_only_enabled": false
+    },
+    "bot_user": {
+      "display_name": "Asked & Answered",
+      "always_online": true
+    },
+    "assistant_view": {
+      "assistant_description": "Answers security questionnaires from your workspace evidence — cited and approval-gated.",
+      "suggested_prompts": [
+        { "title": "Answer a questionnaire", "message": "I'll paste some questions" },
+        { "title": "How does verification work?", "message": "How do you decide Verified vs Needs SME?" }
+      ]
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "assistant:write",
+        "chat:write",
+        "im:history",
+        "im:read",
+        "im:write",
+        "channels:read",
+        "groups:read",
+        "files:read",
+        "search:read.public",
+        "users:read"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "bot_events": [
+        "app_home_opened",
+        "assistant_thread_started",
+        "assistant_thread_context_changed",
+        "message.im",
+        "file_shared"
+      ]
+    },
+    "interactivity": { "is_enabled": true },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": true,
+    "token_rotation_enabled": false
+  }
+}
