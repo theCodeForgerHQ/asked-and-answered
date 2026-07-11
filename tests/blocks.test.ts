@@ -115,7 +115,7 @@ describe('smeRequestBlocks', () => {
     const blocks = smeRequestBlocks({
       questionText: 'Do you carry cyber liability insurance?',
       requesterId: 'U_REQ',
-      questionId: 'q3',
+      ref: 'run-abc:q3',
     });
     const json = JSON.stringify(blocks);
     expect(json).toContain('cyber liability insurance');

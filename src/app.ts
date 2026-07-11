@@ -74,12 +74,17 @@ function parseValue(value: string | undefined): { runId: string; questionId: str
   return { runId: value.slice(0, idx), questionId: value.slice(idx + 1) };
 }
 
-/** Resolve the session a button belongs to (by its embedded runId). */
+/** Resolve the session a button belongs to (by its embedded runId). Expired
+ *  sessions are evicted at lookup time so a stale button stops working after TTL. */
 function sessionForValue(value: string | undefined): { session: ReviewSession; questionId: string } | undefined {
   const parsed = parseValue(value);
   if (!parsed) return undefined;
   const entry = sessions.get(parsed.runId);
   if (!entry) return undefined;
+  if (Date.now() - entry.at > SESSION_TTL_MS) {
+    sessions.delete(parsed.runId);
+    return undefined;
+  }
   return { session: entry.session, questionId: parsed.questionId };
 }
 
@@ -352,7 +357,7 @@ app.action('sme_selected', async ({ ack, body, client, action }) => {
         blocks: smeRequestBlocks({
           questionText: result.questionText,
           requesterId: b.user?.id ?? 'unknown',
-          questionId: ref ?? '',
+          ref: ref ?? '',
         }) as never,
       });
     }

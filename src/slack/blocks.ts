@@ -208,7 +208,8 @@ export function answerCardBlocks(r: DraftResult, runId = ''): Block[] {
 export function smeRequestBlocks(input: {
   questionText: string;
   requesterId: string;
-  questionId: string;
+  /** Opaque `runId:questionId` ref, round-tripped back through the modal. */
+  ref: string;
 }): Block[] {
   return [
     {
@@ -226,7 +227,7 @@ export function smeRequestBlocks(input: {
         {
           type: 'button',
           action_id: 'sme_provide_answer',
-          value: input.questionId,
+          value: input.ref,
           style: 'primary',
           text: { type: 'plain_text', text: 'Provide an answer' },
         },
