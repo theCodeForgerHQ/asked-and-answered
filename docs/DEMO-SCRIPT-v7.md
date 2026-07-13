@@ -41,7 +41,7 @@ Hit Enter. The progress messages stream in: *"Searching workspace evidence…" �
 
 ## SCENE 3 — The receipt: citation click (0:45–1:15)
 
-**ACTION (Tab A):** The summary lands: *"0 verified · 1 grounded in workspace evidence · 0 need a human"*, then the **Review** card. Click **Open** on the row. The answer card appears — answer text plus citation. Click the citation permalink → Slack jumps to the actual message in **#security**: *"All customer data is encrypted at rest with AES-256 managed by AWS KMS…"*
+**ACTION (Tab A):** The summary lands: *"0 verified · 1 grounded in workspace evidence · 0 need a human"*, then the **Review** card. Click the **Review** button on the question row. The answer card appears — answer text plus citation. Click the citation permalink → Slack jumps to the actual message in **#security**: *"All customer data is encrypted at rest with AES-256 managed by AWS KMS…"*
 
 **SAY:**
 > "Grounded — with a receipt. Click the citation and you land on the real message in #security where our team said it.
@@ -56,7 +56,7 @@ The buttons on a grounded answer card are **Confirm / Edit / Reject**. Approve o
 **ACTION (Tab A), on the answer card from Scene 3:**
 
 1. Click **Confirm** → *"📝 Confirmed by @you — ready for final approval by a different human."*
-2. Back on the Review row, click **Open** again → the card re-renders, the primary button is now **Approve**.
+2. Back on the Review message, click the row's **Review** button again → a fresh answer card posts, the primary button is now **Approve**.
 3. Click **Approve** → *"✋ …not in the library yet: the final approval must come from a **different human** than the confirmer."* Let that refusal sit on screen for a beat.
 
 **SAY:**
@@ -71,10 +71,10 @@ Now show the second human — via the flow that exists for it: **Route to an exp
 
 **ACTION:**
 
-1. **Tab A:** paste `Do you operate a bug bounty program?` → summary: *"…1 need a human"*. Click **Open** on the row → the card says *"No draft — no evidence found in this workspace. Asked & Answered would rather ask a human than invent a compliance answer."* with one button: **Route to an expert**.
+1. **Tab A:** paste `Do you operate a bug bounty program?` → summary: *"…1 need a human"*. Click the row's **Review** button → the card says *"No draft — no evidence found in this workspace. Asked & Answered would rather ask a human than invent a compliance answer."* with one button: **Route to an expert**.
 2. **Tab A:** click **Route to an expert** → user picker → choose **Demo User**→ *"📨 Routed to @Demo User."*
 3. **Tab B (Demo User):** the bot's DM has arrived → click **Provide an answer** → modal opens → type: `Not yet — a private bug bounty program launches Q4 2026; until then we run annual third-party penetration tests.` → **Approve & save**. That records Demo User as the human confirmer.
-4. **Tab A:** click **Open** on the same row → the card now shows the expert's answer with **Approve** → click it → *"✅ Approved by @you — saved to the answer library."* Two distinct humans, loop closed.
+4. **Tab A:** click the row's **Review** button again → the card now shows the expert's answer with **Approve** → click it → *"✅ Approved by @you — saved to the answer library."* Two distinct humans, loop closed.
 5. **Tab A:** paste the same bug-bounty question again → *"1 verified from the approved library"*, instantly — and the bot's **Native Canvas** decision log link. Click it: question, answer, who confirmed, who approved, when.
 
 **SAY:**
