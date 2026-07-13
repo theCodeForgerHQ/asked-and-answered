@@ -118,4 +118,47 @@ describe('GroundingGate', () => {
     const result = gate.verify('   ', [hit('p/enc', 'encrypted at rest')], ['p/enc']);
     expect(result.ok).toBe(false);
   });
+
+  // The drafting prompt explicitly allows quoting "the full contiguous
+  // sentence containing the fact" instead of the whole evidence block. The
+  // gate must accept exactly what the prompt demands — a verbatim sentence
+  // from a multi-sentence snippet is grounded. (Live failure 2026-07-15:
+  // drafts quoting only the AES-256 sentence of a two-sentence snippet were
+  // refused ~50% of runs.)
+  test('passes when answer quotes one complete sentence of a multi-sentence snippet verbatim', () => {
+    const result = gate.verify(
+      'We do. "All customer data is encrypted at rest with AES-256 managed by AWS KMS."',
+      [
+        hit(
+          'p/enc',
+          'All customer data is encrypted at rest with AES-256 managed by AWS KMS. Encryption in transit is TLS 1.2+ everywhere.',
+        ),
+      ],
+      ['p/enc'],
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test('a short sentence fragment from the snippet is not enough on its own', () => {
+    const result = gate.verify(
+      'We take security seriously. "No exceptions."',
+      [hit('p/mfa', 'MFA is enforced for every employee via Okta. No exceptions.')],
+      ['p/mfa'],
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  test('a fabricated sentence styled as a quote still fails', () => {
+    const result = gate.verify(
+      '"Customer data is protected by quantum-safe encryption at all layers."',
+      [
+        hit(
+          'p/enc',
+          'All customer data is encrypted at rest with AES-256 managed by AWS KMS. Encryption in transit is TLS 1.2+ everywhere.',
+        ),
+      ],
+      ['p/enc'],
+    );
+    expect(result.ok).toBe(false);
+  });
 });

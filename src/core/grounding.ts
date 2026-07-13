@@ -27,12 +27,21 @@ export interface GroundingResult {
  *   1. NFKC-normalize answer and evidence snippet.
  *   2. Lowercase, strip punctuation, collapse whitespace.
  *   3. Exact substring match in either direction.
- *   4. If exact fails, compute character-trigram Jaccard similarity.
- *   5. Require similarity >= threshold (default 0.8).
+ *   4. If exact fails, accept a verbatim complete sentence of the snippet
+ *      appearing in the answer — the drafting prompt permits quoting "the
+ *      full contiguous sentence containing the fact" instead of the whole
+ *      block, and the gate must accept exactly what the prompt demands.
+ *      Sentences below a minimum normalized length never qualify, so a
+ *      trivially short fragment cannot carry an answer.
+ *   5. If that fails too, compute character-trigram Jaccard similarity and
+ *      require similarity >= threshold (default 0.8).
  *
- * The threshold is intentionally high: we would rather route a borderline
- * paraphrase to a human than ship an unsupported claim.
+ * Every accepted path is exact evidence text or near-identity similarity: we
+ * would rather route a borderline paraphrase to a human than ship an
+ * unsupported claim.
  */
+const MIN_SENTENCE_CHARS = 25;
+
 export class GroundingGate {
   constructor(private readonly threshold = 0.8) {}
 
@@ -56,6 +65,10 @@ export class GroundingGate {
       const normalizedSnippet = normalize(hit.snippet);
 
       if (exactMatch(normalizedAnswer, normalizedSnippet)) {
+        continue;
+      }
+
+      if (sentenceMatch(normalizedAnswer, hit.snippet)) {
         continue;
       }
 
@@ -85,6 +98,16 @@ function normalize(text: string): string {
 function exactMatch(a: string, b: string): boolean {
   if (a.length === 0 || b.length === 0) return false;
   return a.includes(b) || b.includes(a);
+}
+
+/** True when a complete, substantial sentence of the snippet appears verbatim in the answer. */
+function sentenceMatch(normalizedAnswer: string, rawSnippet: string): boolean {
+  if (normalizedAnswer.length === 0) return false;
+  return rawSnippet
+    .split(/[.!?]+/)
+    .map((s) => normalize(s))
+    .filter((s) => s.length >= MIN_SENTENCE_CHARS)
+    .some((s) => normalizedAnswer.includes(s));
 }
 
 function trigrams(text: string): Set<string> {

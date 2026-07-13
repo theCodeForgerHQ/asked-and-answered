@@ -37,8 +37,12 @@
 
 ## SCENE 2: Three questions, one paste (0:18–0:48)
 
-**ACTION (Tab A):** In the **AskedAnswered** DM message box, type or paste on camera, as one message:
-`Do you encrypt customer data at rest? Where is customer data hosted geographically? Do you operate a bug bounty program?`
+**ACTION (Tab A):** In the **AskedAnswered** DM message box, type or paste on camera, as ONE message with each question on its OWN line (press **Shift+Enter** between them; the parser splits questions by line, so a single-line paste becomes one compound question and gets refused):
+```
+Do you encrypt customer data at rest?
+Where is customer data hosted geographically?
+Do you operate a bug bounty program?
+```
 Press Enter. The bot threads its progress live: *"Parsed 3 questions → 3 after removing 0 duplicates. Searching workspace evidence…"* then *"Evidence retrieval complete. Drafting evidence-grounded answers…"*. The summary lands: *"✅ 0 verified from the approved library · 🔍 2 grounded in workspace evidence · ✋ 1 need a human"*. Hold on that line.
 
 **SAY (over the live progress messages, finish after the summary lands):**
@@ -132,4 +136,5 @@ Press Enter. The bot threads its progress live: *"Parsed 3 questions → 3 after
 - If a run comes back *"Needs SME — draft cited evidence that does not support the answer"*, that's the grounding gate refusing a sloppy draft. Re-ask, or feature it: "it just refused its own draft rather than ship an unsupported answer."
 - The modal steps (**Provide an answer**, **Approve & save**) need a real click in a real session. Every other beat in this script was verified end-to-end against the live deployment on 2026-07-15, with two real users.
 - Bot replies thread under your message. Keep the thread pane open while recording.
+- **One question per line, always** (Shift+Enter). Pasting all three on one line makes the parser treat them as a single compound question, and the grounding gate will refuse the draft with "Needs SME — draft cited evidence that does not support the answer".
 - The re-ask in Scene 7 re-drafts the geography question (it was never approved), so allow a few seconds; the progress messages cover the gap.
