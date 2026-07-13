@@ -23,9 +23,7 @@ export class OpenAiDrafter implements DraftingLlm {
   private readonly headers: Record<string, string>;
   private readonly model: string;
 
-  constructor() {
-    const provider = process.env.LLM_PROVIDER ?? 'openai';
-
+  constructor(provider: 'openai' | 'azure' = (process.env.LLM_PROVIDER as 'openai' | 'azure') ?? 'openai') {
     if (provider === 'azure') {
       const endpoint = required('AZURE_OPENAI_ENDPOINT').replace(/\/$/, '');
       const deployment = required('AZURE_OPENAI_DEPLOYMENT');
@@ -50,7 +48,7 @@ export class OpenAiDrafter implements DraftingLlm {
   async draft(question: Question, hits: RtsHit[]): Promise<LlmDraft> {
     const body = {
       model: this.model,
-      max_tokens: 500,
+      max_completion_tokens: 500,
       messages: [{ role: 'user', content: buildDraftPrompt(question, hits) }],
     };
 

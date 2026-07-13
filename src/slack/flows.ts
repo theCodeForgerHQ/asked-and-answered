@@ -1,14 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import type { AnswerLibrary, VisibilityChecker } from '../core/library.js';
 import type { Ledger } from '../core/ledger.js';
+import type { LedgerV2 } from '../core/ledgerV2.js';
 import type { QueryPlanner } from '../core/planner.js';
 import { DraftingPipeline, type DraftingLlm, type DraftResult } from '../core/pipeline.js';
 import type { ParsedQuestionnaire } from '../core/types.js';
 import type { PlanCounts } from './blocks.js';
+import { decide } from '../core/decide.js';
 
 export interface RunDeps {
   library: AnswerLibrary;
   ledger: Ledger;
+  /** Optional event-sourced ledger v2. When present, review actions also emit DomainEvents. */
+  ledgerV2?: LedgerV2;
   llm: DraftingLlm;
   visibility: VisibilityChecker;
   planner: QueryPlanner;
@@ -43,6 +47,11 @@ export class ReviewSession {
     }
   }
 
+  private emitEvents(events: import('../core/events.js').DomainEvent[]): void {
+    if (!this.deps.ledgerV2) return;
+    for (const ev of events) this.deps.ledgerV2.append(ev);
+  }
+
   approve(questionId: string, actor: string, runId?: string): DraftResult {
     this.assertRun(runId);
     const r = this.mustFind(questionId);
@@ -61,6 +70,14 @@ export class ReviewSession {
       answerHashInput: r.answerText,
       evidenceRefs: (r.citations ?? []).map((c) => c.permalink),
     });
+    const decision = decide(this.deps.ledgerV2?.entries() ?? [], {
+      type: 'Approve',
+      questionId,
+      actor,
+      result: r,
+    });
+    if (decision.ok) this.emitEvents(decision.events ?? []);
+
     const citations = r.citations ?? [];
     const saved = this.deps.library.saveApproved({
       questionText: r.questionText,
@@ -88,6 +105,14 @@ export class ReviewSession {
       answerHashInput: r.answerText ?? '',
       evidenceRefs: (r.citations ?? []).map((c) => c.permalink),
     });
+    const decision = decide(this.deps.ledgerV2?.entries() ?? [], {
+      type: 'Reject',
+      questionId,
+      actor,
+      result: r,
+    });
+    if (decision.ok) this.emitEvents(decision.events ?? []);
+
     r.state = 'needs_sme';
     r.reason = 'rejected';
     delete r.answerText;
@@ -107,6 +132,15 @@ export class ReviewSession {
       answerHashInput: newText,
       evidenceRefs: (r.citations ?? []).map((c) => c.permalink),
     });
+    const decision = decide(this.deps.ledgerV2?.entries() ?? [], {
+      type: 'Edit',
+      questionId,
+      actor,
+      newText,
+      result: r,
+    });
+    if (decision.ok) this.emitEvents(decision.events ?? []);
+
     r.answerText = newText;
     return r;
   }
@@ -118,6 +152,14 @@ export class ReviewSession {
     r.answerText = answerText;
     r.state = 'grounded';
     delete r.reason;
+    const decision = decide(this.deps.ledgerV2?.entries() ?? [], {
+      type: 'SmeProvide',
+      questionId,
+      actor: smeId,
+      answerText,
+      result: r,
+    });
+    if (decision.ok) this.emitEvents(decision.events ?? []);
     return this.approve(questionId, smeId, this.runId);
   }
 
@@ -160,5 +202,38 @@ export async function runQuestionnaire(
     `Done: ${counts.verified} verified, ${counts.grounded} grounded, ${counts.needsSme} routed to humans.`,
   );
 
-  return new ReviewSession(results, counts, deps, requesterId);
+  const session = new ReviewSession(results, counts, deps, requesterId);
+
+  if (deps.ledgerV2) {
+    deps.ledgerV2.append({
+      type: 'QuestionnaireIntaken',
+      runId: session.runId,
+      questions: parsed.questions,
+      requesterId,
+      ts: new Date().toISOString(),
+    });
+    for (const [questionId, ev] of evidence.entries()) {
+      deps.ledgerV2.append({
+        type: 'EvidenceRetrieved',
+        runId: session.runId,
+        questionId,
+        hits: ev.hits,
+        ts: new Date().toISOString(),
+      });
+    }
+    for (const r of results) {
+      if (r.state === 'grounded' || r.state === 'verified') {
+        deps.ledgerV2.append({
+          type: 'DraftProduced',
+          runId: session.runId,
+          questionId: r.questionId,
+          answerText: r.answerText ?? '',
+          citations: r.citations ?? [],
+          ts: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  return session;
 }

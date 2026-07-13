@@ -42,9 +42,10 @@ const rts: RtsClient = {
 
 const llm: DraftingLlm = {
   async draft(question, hits) {
+    const snippet = hits[0]?.snippet ?? '';
     return {
       kind: 'answer',
-      answerText: `Yes — grounded in workspace evidence (${question.id}).`,
+      answerText: `Yes — ${snippet} (${question.id}).`,
       citedPermalinks: [hits[0]?.permalink ?? ''],
     };
   },

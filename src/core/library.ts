@@ -1,4 +1,6 @@
 import Database from 'better-sqlite3';
+import type { ConformalMatcher } from './conformal.js';
+import type { EvidenceGraph } from './evidenceGraph.js';
 
 /**
  * A pointer to evidence living in Slack. Zero-copy: we never store the
@@ -47,7 +49,7 @@ export interface VisibilityChecker {
 
 export type LibraryLookup =
   | { status: 'verified'; answer: ApprovedAnswer }
-  | { status: 'degraded'; questionText: string; blockedCitations: string[] }
+  | { status: 'degraded'; questionText: string; blockedCitations: string[]; reason?: 'acl' | 'stale_evidence' }
   | { status: 'miss' };
 
 const TOKEN_OVERLAP_THRESHOLD = 0.8;
@@ -80,7 +82,11 @@ function jaccard(a: Set<string>, b: Set<string>): number {
  * carries no answer content.
  */
 export class AnswerLibrary {
-  private constructor(private readonly db: Database.Database) {
+  private constructor(
+    private readonly db: Database.Database,
+    private readonly graph?: EvidenceGraph,
+    private readonly matcher?: ConformalMatcher,
+  ) {
     this.db
       .prepare(
         `CREATE TABLE IF NOT EXISTS answers (
@@ -97,12 +103,12 @@ export class AnswerLibrary {
       .run();
   }
 
-  static inMemory(): AnswerLibrary {
-    return new AnswerLibrary(new Database(':memory:'));
+  static inMemory(graph?: EvidenceGraph, matcher?: ConformalMatcher): AnswerLibrary {
+    return new AnswerLibrary(new Database(':memory:'), graph, matcher);
   }
 
-  static atPath(path: string): AnswerLibrary {
-    return new AnswerLibrary(new Database(path));
+  static atPath(path: string, graph?: EvidenceGraph, matcher?: ConformalMatcher): AnswerLibrary {
+    return new AnswerLibrary(new Database(path), graph, matcher);
   }
 
   saveApproved(input: SaveApprovedInput): ApprovedAnswer {
@@ -127,7 +133,7 @@ export class AnswerLibrary {
         approvedAt,
         kind,
       );
-    return {
+    const answer: ApprovedAnswer = {
       id: Number(info.lastInsertRowid),
       questionText: input.questionText,
       answerText: input.answerText,
@@ -136,6 +142,65 @@ export class AnswerLibrary {
       approvedAt,
       kind,
     };
+
+    this.indexInGraph(answer);
+    return answer;
+  }
+
+  private indexInGraph(answer: ApprovedAnswer): void {
+    if (!this.graph) return;
+
+    const answerNodeId = `answer:${answer.id}`;
+    this.graph.addAnswer({
+      id: answerNodeId,
+      kind: 'answer',
+      answerId: answer.id,
+      questionText: answer.questionText,
+      answerText: answer.answerText,
+    });
+
+    for (const citation of answer.citations) {
+      const evidenceId = `evidence:${citation.permalink}`;
+      this.graph.addEvidence({
+        id: evidenceId,
+        kind: 'evidence',
+        permalink: citation.permalink,
+        channelId: citation.channelId,
+        ts: citation.ts,
+        snippet: '', // Snippet is not stored in the library; caller should backfill via observeEvidence.
+        observedAt: answer.approvedAt,
+      });
+      this.graph.supports(evidenceId, answerNodeId);
+    }
+
+    // Extract simple sentence-level claims from the answer text.
+    const sentences = answer.answerText
+      .split(/[.!?]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 10);
+    for (let i = 0; i < sentences.length; i++) {
+      const claimId = `claim:answer-${answer.id}:${i}`;
+      this.graph.addClaim({ id: claimId, kind: 'claim', text: sentences[i]!, sourceId: answerNodeId });
+      this.graph.supports(answerNodeId, claimId);
+    }
+  }
+
+  /**
+   * Let the graph observe the actual snippet behind a citation. This enables
+   * auto-contradiction detection when new evidence arrives.
+   */
+  observeEvidence(permalink: string, channelId: string, ts: string, snippet: string, observedAt = new Date().toISOString()): void {
+    if (!this.graph) return;
+    const id = `evidence:${permalink}`;
+    const existing = this.graph.getNode(id);
+    if (existing?.kind === 'evidence') {
+      // Re-observing the same permalink updates the snippet in-place for
+      // contradiction detection without mutating the node identity.
+      (existing as { snippet: string }).snippet = snippet;
+      (existing as { observedAt: string }).observedAt = observedAt;
+    } else {
+      this.graph.addEvidence({ id, kind: 'evidence', permalink, channelId, ts, snippet, observedAt });
+    }
   }
 
   /**
@@ -160,7 +225,19 @@ export class AnswerLibrary {
     if (blocked.length > 0) {
       // Deliberately reconstructed without any answer fields: the compiler
       // and the property suite both guard against answer text riding along.
-      return { status: 'degraded', questionText: match.questionText, blockedCitations: blocked };
+      return { status: 'degraded', questionText: match.questionText, blockedCitations: blocked, reason: 'acl' };
+    }
+
+    if (this.graph?.isStale(match.id)) {
+      const conflicting = this.graph
+        .contradictionsForAnswer(match.id)
+        .map((c) => c.conflictingEvidence.permalink);
+      return {
+        status: 'degraded',
+        questionText: match.questionText,
+        blockedCitations: conflicting,
+        reason: 'stale_evidence',
+      };
     }
 
     return { status: 'verified', answer: match };
@@ -218,15 +295,23 @@ export class AnswerLibrary {
   }
 
   private bestMatch(questionText: string): ApprovedAnswer | undefined {
-    const norm = normalize(questionText);
-    const queryTokens = tokens(questionText);
+    const answers = this.allAnswers();
+    if (answers.length === 0) return undefined;
 
+    // Exact match bypasses all statistical reasoning.
+    const exact = answers.find((a) => normalize(a.questionText) === normalize(questionText));
+    if (exact) return exact;
+
+    // Calibrated conformal matcher, if available.
+    if (this.matcher?.isCalibrated) {
+      return this.matcher.match(questionText, answers);
+    }
+
+    // Fallback to hand-tuned token overlap.
+    const queryTokens = tokens(questionText);
     let best: { answer: ApprovedAnswer; score: number } | undefined;
-    for (const answer of this.allAnswers()) {
-      const score =
-        normalize(answer.questionText) === norm
-          ? 1
-          : jaccard(queryTokens, tokens(answer.questionText));
+    for (const answer of answers) {
+      const score = jaccard(queryTokens, tokens(answer.questionText));
       if (score >= TOKEN_OVERLAP_THRESHOLD && (best === undefined || score > best.score)) {
         best = { answer, score };
       }

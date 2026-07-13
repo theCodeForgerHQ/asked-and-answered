@@ -14,7 +14,8 @@ function q(id: string, text: string): Question {
 
 const goodLlm: DraftingLlm = {
   async draft(_q, hits) {
-    return { kind: 'answer', answerText: 'Drafted from evidence.', citedPermalinks: [hits[0]?.permalink ?? ''] };
+    const snippet = hits[0]?.snippet ?? '';
+    return { kind: 'answer', answerText: `Yes — ${snippet}.`, citedPermalinks: [hits[0]?.permalink ?? ''] };
   },
 };
 

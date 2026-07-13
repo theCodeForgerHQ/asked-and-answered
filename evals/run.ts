@@ -13,7 +13,7 @@ if (evalProvider === 'anthropic') {
   llm = new AnthropicDrafter();
 } else if (evalProvider === 'openai' || evalProvider === 'azure') {
   const { OpenAiDrafter } = await import('../src/llm/openai.js');
-  llm = new OpenAiDrafter();
+  llm = new OpenAiDrafter(evalProvider);
 }
 
 const report = await runEval(llm);

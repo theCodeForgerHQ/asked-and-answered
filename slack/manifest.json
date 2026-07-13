@@ -29,19 +29,24 @@
       "bot": [
         "assistant:write",
         "chat:write",
+        "chat:write.public",
+        "channels:read",
+        "channels:manage",
+        "groups:read",
+        "groups:write",
+        "files:read",
+        "files:write",
+        "search:read.public",
+        "users:read",
         "im:history",
         "im:read",
-        "im:write",
-        "channels:read",
-        "groups:read",
-        "files:read",
-        "search:read.public",
-        "users:read"
+        "im:write"
       ]
     }
   },
   "settings": {
     "event_subscriptions": {
+      "request_url": "https://asked-and-answered-app.onrender.com/slack/events",
       "bot_events": [
         "app_home_opened",
         "assistant_thread_started",
@@ -52,7 +57,7 @@
     },
     "interactivity": { "is_enabled": true },
     "org_deploy_enabled": false,
-    "socket_mode_enabled": true,
+    "socket_mode_enabled": false,
     "token_rotation_enabled": false
   }
 }

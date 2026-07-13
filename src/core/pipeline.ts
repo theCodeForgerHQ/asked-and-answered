@@ -1,4 +1,5 @@
 import type { AnswerLibrary, Citation, VisibilityChecker } from './library.js';
+import { GroundingGate } from './grounding.js';
 import type { QuestionEvidence, RtsHit } from './planner.js';
 import type { Question } from './types.js';
 
@@ -18,7 +19,9 @@ export type NeedsSmeReason =
   | 'search_failed'
   | 'llm_refused'
   | 'invalid_citations'
+  | 'ungrounded_citations'
   | 'acl_degraded'
+  | 'stale_evidence'
   | 'llm_error'
   | 'rejected';
 
@@ -46,12 +49,16 @@ export interface DraftResult {
  * 3. With evidence, the LLM may draft — but its citations must be a subset
  *    of the evidence we handed it. Anything else (including prompt-injected
  *    citations) is discarded and routed to a human.
+ * 4. Even valid permalinks must be *grounded*: the cited snippet text must
+ *    actually appear in the drafted answer. Paraphrases and fabrications are
+ *    caught deterministically by GroundingGate.
  */
 export class DraftingPipeline {
   constructor(
     private readonly library: AnswerLibrary,
     private readonly llm: DraftingLlm,
     private readonly visibility: VisibilityChecker,
+    private readonly grounding: GroundingGate = new GroundingGate(),
   ) {}
 
   async run(
@@ -93,7 +100,11 @@ export class DraftingPipeline {
       };
     }
     if (lookup.status === 'degraded') {
-      return { ...base, state: 'needs_sme', reason: 'acl_degraded' };
+      return {
+        ...base,
+        state: 'needs_sme',
+        reason: lookup.reason === 'stale_evidence' ? 'stale_evidence' : 'acl_degraded',
+      };
     }
 
     // 2) Fail-closed on missing or failed evidence.
@@ -140,6 +151,14 @@ export class DraftingPipeline {
         visible = false;
       }
       if (!visible) return { ...base, state: 'needs_sme', reason: 'acl_degraded' };
+    }
+
+    // Grounding guard: the cited snippet must actually support the answer text.
+    // Runs after the invariant so invisible citations are reported as ACL
+    // degradation, not as a grounding failure.
+    const grounding = this.grounding.verify(draft.answerText, evidence.hits, cited);
+    if (!grounding.ok) {
+      return { ...base, state: 'needs_sme', reason: 'ungrounded_citations' };
     }
 
     return { ...base, state: 'grounded', answerText: draft.answerText.trim(), citations };

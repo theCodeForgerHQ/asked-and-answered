@@ -29,7 +29,9 @@ const REASON_LABEL: Record<NeedsSmeReason, string> = {
   search_failed: 'workspace search failed',
   llm_refused: 'evidence was insufficient to answer',
   invalid_citations: 'draft failed citation validation',
+  ungrounded_citations: 'draft cited evidence that does not support the answer',
   acl_degraded: 'approved answer exists, but you cannot see its evidence',
+  stale_evidence: 'approved answer is contradicted by newer workspace evidence',
   llm_error: 'drafting error',
   rejected: 'draft rejected by a reviewer',
 };

@@ -122,7 +122,7 @@ describe('DraftingPipeline', () => {
   test('good evidence + grounded LLM draft → state=grounded with citations', async () => {
     const { llm } = fakeLlm((_q, hits) => ({
       kind: 'answer',
-      answerText: 'Yes, backups are tested quarterly (see #infra runbook thread).',
+      answerText: 'Yes, we ran the quarterly backup restore drill.',
       citedPermalinks: [hits[0]?.permalink ?? ''],
     }));
     const pipeline = new DraftingPipeline(library, llm, allVisible());
@@ -133,6 +133,23 @@ describe('DraftingPipeline', () => {
 
     expect(results[0]?.state).toBe('grounded');
     expect(results[0]?.citations?.map((c) => c.permalink)).toEqual(['https://s.example/backup']);
+  });
+
+  test('GROUNDING GUARD: real permalink + fabricated snippet → needs_sme(ungrounded_citations)', async () => {
+    const { llm } = fakeLlm((_q, hits) => ({
+      kind: 'answer',
+      answerText: 'We issue cyber liability insurance through Acme Brokerage with a $5M limit.',
+      citedPermalinks: [hits[0]?.permalink ?? ''],
+    }));
+    const pipeline = new DraftingPipeline(library, llm, allVisible());
+
+    const question = q('q1', 'Do you carry cyber liability insurance?');
+    const hits = [hit('https://s.example/enc', 'All customer data is encrypted at rest with AES-256.')];
+    const results = await pipeline.run([question], new Map([['q1', evidence('q1', hits)]]), 'U_REQ');
+
+    expect(results[0]?.state).toBe('needs_sme');
+    expect(results[0]?.reason).toBe('ungrounded_citations');
+    expect(results[0]?.answerText).toBeUndefined();
   });
 
   test('INJECTION GUARD: LLM citing a permalink outside the evidence set → needs_sme(invalid_citations)', async () => {

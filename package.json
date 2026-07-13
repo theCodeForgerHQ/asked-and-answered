@@ -9,7 +9,8 @@
   },
   "scripts": {
     "dev": "tsx watch src/app.ts",
-    "start": "tsx src/app.ts",
+    "build": "tsc",
+    "start": "node dist/src/app.js",
     "mcp": "tsx src/mcp/server.ts",
     "test": "vitest run",
     "test:watch": "vitest",

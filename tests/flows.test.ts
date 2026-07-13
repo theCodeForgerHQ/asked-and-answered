@@ -23,9 +23,10 @@ function deps(overrides: Partial<RunDeps> = {}): RunDeps {
   };
   const llm: DraftingLlm = {
     async draft(_q, hits) {
+      const snippet = hits[0]?.snippet ?? '';
       return {
         kind: 'answer',
-        answerText: 'Yes — AES-256 via KMS.',
+        answerText: `Yes — ${snippet}.`,
         citedPermalinks: [hits[0]?.permalink ?? ''],
       };
     },
