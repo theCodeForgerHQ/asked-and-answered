@@ -16,11 +16,10 @@
 1. `curl -s https://asked-and-answered-app.onrender.com/health` returns `ok`.
 2. None of the three demo questions may already be in the approved library. Trigger a fresh Render deploy (the free-tier disk wipes the DB) or verify a fresh ask shows *grounded*, not *verified*.
 3. **Rehearse with a different question** (`What is your password policy?`) so rehearsal approvals never contaminate the demo set.
-4. The three demo questions, verified against workspace seed evidence:
+4. The three demo questions, verified live against the deployed pipeline on 2026-07-15 (summary came back "2 grounded · 1 need a human"):
    - `Do you encrypt customer data at rest?` → grounded (the AES-256 message in #security)
-   - `Where is customer data hosted geographically?` → grounded (the us-east-1 message in #engineering)
+   - `Is MFA enforced for all employees?` → grounded (the Okta message in #security)
    - `Do you operate a bug bounty program?` → needs a human (no seed evidence)
-   If the geography question ever comes back needs-a-human on a test run, swap in `Is MFA enforced for all employees?` and pick a new rehearsal question.
 5. Tab A and Tab B both open on the **AskedAnswered** DM. Practice the window switch once.
 6. Open the App Home once in Tab A (click the app name at the top of the DM, then the **Home** tab) so the dashboard is warm for the cold open.
 7. Open `/safety-report` in the hidden tab and note where the metric cards sit, you will point at two of them.
@@ -40,7 +39,7 @@
 **ACTION (Tab A):** In the **AskedAnswered** DM message box, type or paste on camera, as ONE message with each question on its OWN line (press **Shift+Enter** between them; the parser splits questions by line, so a single-line paste becomes one compound question and gets refused):
 ```
 Do you encrypt customer data at rest?
-Where is customer data hosted geographically?
+Is MFA enforced for all employees?
 Do you operate a bug bounty program?
 ```
 Press Enter. The bot threads its progress live: *"Parsed 3 questions → 3 after removing 0 duplicates. Searching workspace evidence…"* then *"Evidence retrieval complete. Drafting evidence-grounded answers…"*. The summary lands: *"✅ 0 verified from the approved library · 🔍 2 grounded in workspace evidence · ✋ 1 need a human"*. Hold on that line.
@@ -131,7 +130,7 @@ Press Enter. The bot threads its progress live: *"Parsed 3 questions → 3 after
 ## Known traps
 
 - Rehearsal approvals contaminate the library. Rehearse only with `What is your password policy?`, or redeploy to wipe.
-- Do NOT use "cyber liability insurance" as the needs-a-human question; workspace seed data grounds it.
+- Do NOT use "cyber liability insurance" as the needs-a-human question; workspace seed data grounds it. Do NOT use "hosted geographically" as a grounded question; the model honestly refuses it (the us-east-1 evidence covers production services, not customer data). If you want a spare grounded question, `Do you carry cyber liability insurance?` grounds reliably.
 - The **Run Z3 proof** App Home button works but takes about a minute on the free tier. Don't click it live; the safety-report page shows the same verdict instantly.
 - If a run comes back *"Needs SME — draft cited evidence that does not support the answer"*, that's the grounding gate refusing a sloppy draft. Re-ask, or feature it: "it just refused its own draft rather than ship an unsupported answer."
 - The modal steps (**Provide an answer**, **Approve & save**) need a real click in a real session. Every other beat in this script was verified end-to-end against the live deployment on 2026-07-15, with two real users.
