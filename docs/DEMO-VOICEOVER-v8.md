@@ -1,4 +1,3 @@
-# Demo Voiceover v8 (spoken text only)
 
 Every enterprise deal stops at the same wall: a security questionnaire. A hundred rows, half an hour each, and it lands on a 150-dollar-an-hour security engineer. That's 7,500 dollars a questionnaire, spent retyping answers your company already gave, somewhere in Slack.
 
