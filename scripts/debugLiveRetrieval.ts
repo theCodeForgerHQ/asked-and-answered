@@ -17,10 +17,10 @@ const client = new bolt.App({ token, signingSecret: 'unused' }).client;
 const requesterId = process.argv[2] ?? 'U0BGVMUBYHH';
 
 const QUESTIONS = [
-  { id: 'q1', text: 'Do you encrypt customer data at rest?' },
-  { id: 'q2', text: 'Is multi-factor authentication enforced for all employees?' },
-  { id: 'q3', text: 'Do you carry cyber liability insurance?' },
-  { id: 'q4', text: 'Where is production customer data hosted geographically?' },
+  { id: 'q1', text: 'Do you encrypt customer data at rest?', sourceRef: 'debug:1' },
+  { id: 'q2', text: 'Is multi-factor authentication enforced for all employees?', sourceRef: 'debug:2' },
+  { id: 'q3', text: 'Do you carry cyber liability insurance?', sourceRef: 'debug:3' },
+  { id: 'q4', text: 'Where is production customer data hosted geographically?', sourceRef: 'debug:4' },
 ];
 
 const tokens = new ActionTokenStore(); // empty, like a DM with no action token
