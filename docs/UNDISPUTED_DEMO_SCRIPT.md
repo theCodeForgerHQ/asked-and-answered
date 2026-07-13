@@ -99,7 +99,7 @@ Where is production data hosted?
 **DO:** Click the app's **Home** tab, then click the **Check invariant** quick action (or open `https://asked-and-answered-app.onrender.com/invariant` in a browser tab and show the `"status":"pass"` JSON).
 
 **SAY:**
-> "Underneath all of this is one rule: no answer text ever reaches someone who can't see all of its evidence. We enforce it in reuse, in fresh drafts, and in our MCP server. And we didn't just test it — we had a proof engine, Z3, check every path our guards allow and confirm not one of them can leak. You don't have to take my word for it: that proof runs as a live health check you can hit right now. That's the one thing a compliance tool cannot get wrong — and we can prove we don't."
+> "Underneath all of this is one rule: no answer text ever reaches someone who can't see all of its evidence. We enforce it in reuse, in fresh drafts, and in our MCP server — and we guard that rule two ways. In our build, we run it through the Z3 proof engine: the negation comes back unsatisfiable, so under our model the invariant can't be violated. And live, right here: this health endpoint re-runs the permission property against fresh cases every time you hit it — and it's non-vacuous, so if anyone disabled the guard, it would go red. A proof in the build, and a tripwire in production. That's the one thing a compliance tool cannot get wrong."
 
 ---
 
