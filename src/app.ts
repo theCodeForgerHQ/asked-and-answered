@@ -121,7 +121,7 @@ const app = new App({
         const accept = req.headers.accept ?? '';
         if (accept.includes('application/json')) {
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ status: 'ok', capabilities, build: 'prompt-fix-02' }));
+          res.end(JSON.stringify({ status: 'ok', capabilities, build: 'cap-probe-03' }));
         } else {
           res.writeHead(200);
           res.end('ok');
