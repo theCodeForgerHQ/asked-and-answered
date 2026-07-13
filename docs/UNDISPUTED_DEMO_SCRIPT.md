@@ -91,7 +91,7 @@ Where is production data hosted?
 **DO:** Paste the same four questions again and send. The encryption row now returns **Verified** instantly, crediting the approver, with the note *"re-checked against your permissions."*
 
 **SAY:**
-> "Now watch it compound. The answer we just approved comes back on the next questionnaire as Verified — instantly — and notice it's re-checked against my permissions before it's reused. On our seeded benchmark that's a simulated thirty-seven expert-hours, roughly fifty-six hundred dollars, saved for every hundred questions. And because every approval becomes a permanent, permission-aware asset, deal two starts mostly done — the savings grow with every deal you close."
+> "Now watch it compound. The answer we just approved comes back on the next questionnaire as Verified — instantly — and notice it's re-checked against my permissions before it's reused. That's the entire economic model in one motion: every approval becomes a permanent, permission-aware asset, so deal two starts mostly done and deal ten is nearly free. Our impact model puts that at thirty-seven expert-hours — about fifty-six hundred dollars — off every hundred questions, and it grows with every deal you close."
 
 ---
 
@@ -127,6 +127,8 @@ Where is production data hosted?
 - "The drafters are actually a panel of different models, reconciled behind one deterministic gate."
 - "Untrusted evidence is normalized and delimiter-hardened before the model ever sees it — homoglyphs, zero-width characters, the works."
 - "Our MCP server fails closed by default — unconfigured, it redacts every evidence-backed answer."
+
+**On the impact number (read this before you record beat 8):** the ~37 hours / ~$5,600 figure comes from `scripts/runCounterfactual.ts`, which is a **model**, not a measured pilot — its output is literally tagged `SIMULATED`. Judges in this track have repo + sandbox access and will see that. So the number is always attributed to the model — **"our impact model puts that at…"** — never spoken as a measured or realized result. This is not a weakness to hide: your product's entire thesis is *"no proof, no answer,"* and a claim you can't back would hand a judge the exact contradiction that sinks you. The *real*, on-camera impact proof is the compounding you demonstrate live (Verified-instantly-on-re-run) — lead with that; the modeled dollars are support. When you run a real pilot after the video, swap in the measured number and drop the "model" attribution.
 
 **Contingencies:**
 - Don't feature **Export Canvas** unless it renders natively on camera — `Export xlsx` is the reliable one.
