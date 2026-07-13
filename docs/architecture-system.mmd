@@ -1,0 +1,86 @@
+flowchart TB
+  %% ===== Surfaces =====
+  subgraph SURF["Slack-native surfaces  ·  Slack AI capabilities"]
+    direction LR
+    MSG["agent Messages tab<br/>streamed plan"]
+    REV["Block Kit review table<br/>+ answer cards<br/>Confirm / Approve"]
+    DT["Data Table<br/>recent runs"]
+    HOME["App Home dashboard<br/>ACL-filtered"]
+    CANV["Canvas export"]
+    WF["Workflow Builder step"]
+  end
+
+  subgraph EXT["External clients & routes"]
+    direction LR
+    MCPC["Claude / Cursor / Slackbot<br/>MCP client"]
+    HTTP["HTTP routes<br/>/health · /invariant · /oauth&#47;user"]
+  end
+
+  APP["src/app.ts<br/><b>Bolt listeners & actions</b>"]
+
+  SURF --> APP
+  HTTP --> APP
+  MCPC --> MCP
+
+  %% ===== Ingest & Retrieve =====
+  subgraph ING["Ingest & Retrieve"]
+    PARSE["parse.ts<br/>xlsx / csv / text<br/>→ deduped Questions"]
+    PLAN["planner.ts<br/>QueryPlanner + RateBudget"]
+    RTS["rts.ts<br/><b>Real-Time Search API</b><br/>scoped per requester"]
+    SAN["sanitize.ts<br/>NFKC + delimiter hardening"]
+  end
+
+  %% ===== Deterministic safety shell =====
+  subgraph SHELL["Deterministic safety shell — code decides, the model advises"]
+    JURY["jury.ts<br/>multi-agent drafting panel"]
+    REG["providerRegistry.ts<br/>Anthropic · OpenAI · Azure"]
+    GATE["grounding.ts<br/>GroundingGate<br/>snippet-level citation verify"]
+    PIPE["pipeline.ts<br/>3-state · fail-closed<br/>Verified / Grounded / Needs-SME"]
+  end
+
+  %% ===== Memory & Governance =====
+  subgraph MEM["Memory & Governance"]
+    LIB["library.ts + conformal.ts<br/>approved answers<br/>+ ACL revalidation"]
+    EG["evidenceGraph.ts<br/>SUPPORTS / CONTRADICTS / SUPERSEDES"]
+    DEC["decide.ts + stateMachine.ts<br/>two distinct human gates"]
+    LED["ledgerV2.ts<br/>event-sourced · hash-chained"]
+    SESS["sessionStore.ts<br/>durable review sessions"]
+  end
+
+  %% ===== Export & Assurance =====
+  EXP["export.ts<br/>finished xlsx + citations"]
+  MCP["mcp/serverV2.ts<br/>read-only library +<br/>human-gated propose_answer<br/>(fails closed)"]
+
+  subgraph ASSURE["Assurance — the permission invariant"]
+    INV["invariant.ts<br/>property test + non-vacuity<br/>(live /invariant)"]
+    Z3["Z3 proofs (CI)<br/>verifyInvariantZ3 ·<br/>verifyPipelineCodeLevel"]
+  end
+
+  %% ===== Main flow =====
+  APP --> PARSE --> PLAN --> RTS --> SAN --> JURY
+  JURY --- REG
+  JURY --> GATE --> PIPE
+  PLAN -. rate budget .- RTS
+  LIB -->|Verified match| PIPE
+  RTS -->|observeEvidence| EG
+  EG -. degrades stale .-> LIB
+  PIPE --> REV
+  REV --> DEC --> LED
+  DEC -->|approved| LIB
+  APP --- SESS
+  PIPE --> EXP --> CANV
+  LIB --> MCP
+  APP --> INV
+  INV -. entailed by .- Z3
+
+  %% ===== Invariant guards (cross-cutting) =====
+  INV -. guards .-> LIB
+  INV -. guards .-> PIPE
+  INV -. guards .-> MCP
+
+  classDef shell fill:#fde68a,stroke:#b45309,stroke-width:2px,color:#111;
+  classDef tech fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,color:#111;
+  classDef inv fill:#dcfce7,stroke:#15803d,stroke-width:2px,color:#111;
+  class GATE,PIPE,DEC shell;
+  class RTS,MCP,MSG tech;
+  class INV,Z3 inv;
