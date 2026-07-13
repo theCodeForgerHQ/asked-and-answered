@@ -4,7 +4,7 @@ import { Ledger } from './core/ledger.js';
 import { QueryPlanner, RateBudget } from './core/planner.js';
 import { parseCsv, parseText, parseXlsx } from './core/parse.js';
 import { exportXlsx } from './core/export.js';
-import { AnthropicDrafter } from './llm/anthropic.js';
+import { createDrafter } from './llm/index.js';
 import {
   answerCardBlocks,
   planSummaryText,
@@ -50,7 +50,7 @@ const dbPath = process.env.AA_DB_PATH ?? 'asked-and-answered.db';
 const library = AnswerLibrary.atPath(dbPath);
 const ledger = Ledger.atPath(dbPath.replace(/\.db$/, '-ledger.db'));
 const tokens = new ActionTokenStore();
-const drafter = new AnthropicDrafter();
+const drafter = createDrafter();
 
 /**
  * Sessions keyed by runId (unique per questionnaire run), so a stale button

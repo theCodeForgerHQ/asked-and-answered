@@ -7,15 +7,21 @@ import { runEval } from './harness.js';
 import type { DraftingLlm } from '../src/core/pipeline.js';
 
 let llm: DraftingLlm | undefined;
-if (process.env.AA_EVAL_LLM === 'anthropic') {
+const evalProvider = process.env.AA_EVAL_LLM ?? 'fake';
+if (evalProvider === 'anthropic') {
   const { AnthropicDrafter } = await import('../src/llm/anthropic.js');
   llm = new AnthropicDrafter();
+} else if (evalProvider === 'openai' || evalProvider === 'azure') {
+  const { OpenAiDrafter } = await import('../src/llm/openai.js');
+  llm = new OpenAiDrafter();
 }
 
 const report = await runEval(llm);
 
 console.log('\n=== Asked & Answered — Eval Report ===');
-console.log(`LLM: ${process.env.AA_EVAL_LLM === 'anthropic' ? 'anthropic (real)' : 'faithful fake (deterministic)'}`);
+console.log(
+  `LLM: ${evalProvider === 'anthropic' ? 'anthropic (real)' : evalProvider === 'openai' || evalProvider === 'azure' ? `${evalProvider} (real)` : 'faithful fake (deterministic)'}`,
+);
 console.log(`Cases: ${report.total}\n`);
 const row = (label: string, m: { hit: number; of: number; pct: number }) =>
   console.log(`  ${label.padEnd(26)} ${String(m.hit).padStart(2)}/${m.of}  (${m.pct}%)`);

@@ -1,26 +1,33 @@
 # Handoff — what only you (with credentials) can do
 
-The code is complete: 85 tests green, offline smoke passes, docs written, eval
+The code is complete: 91 tests green, offline smoke passes, docs written, eval
 numbers measured, submission text drafted. What's left needs YOUR accounts and
 YOUR hands. Do it in this order.
 
 ## A. Accounts to have ready (15 min)
-- [ ] Anthropic API key with billing (drafting model).
-- [ ] GitHub — push this repo public (license already MIT).
-- [ ] Railway or Fly account with a card (non-sleeping deploy).
+- [ ] LLM credentials: Anthropic, OpenAI, or **Azure OpenAI** (drafting model). Azure is recommended if you have existing credits.
+- [ ] GitHub — repo is already public, but CI workflow needs a token refresh (see B).
+- [ ] Render free-tier account (no credit card required for free static sites + web services; add a cron-ping monitor).
 - [ ] YouTube channel (for the demo video).
 - [ ] A real security engineer / AE contact for a 30-min interview — TODAY.
 
-## B. Push the repo (5 min)
+## B. Push the repo + CI workflow (5 min)
+Repo is already public at `https://github.com/theCodeForgerHQ/asked-and-answered`.
+The initial push omitted `.github/workflows/ci.yml` because the GitHub CLI token
+lacked `workflow` scope. Restore it:
+
 ```bash
 cd asked-and-answered
-gh repo create asked-and-answered --public --source=. --push
+gh auth refresh --scopes workflow
+git push
 ```
 
 ## C. Slack sandbox + spikes (the T-0 to T-6h block) — DO BEFORE feature confidence
 1. Join the Slack Developer Program; provision a sandbox.
 2. api.slack.com/apps → Create New App → **From a manifest** → paste `slack/manifest.json`. This is **App A** (internal). Install to the sandbox.
-3. Put `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN`, `ANTHROPIC_API_KEY` in `.env`.
+3. Put `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN`, and your LLM credentials in `.env`:
+   - Set `LLM_PROVIDER=azure` (recommended) and fill `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`.
+   - Or use `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`, or `LLM_PROVIDER=openai` + `OPENAI_API_KEY`.
 4. `npm run dev` (Socket Mode) → DM the app, paste 3 questions.
 5. **Spike verifications (this is the real risk — do them first):**
    - **S1** agent_view events: confirm `app_home_opened`/`message.im` fire. If the manifest's `assistant_view` block conflicts with agent_view in your sandbox, switch the manifest to the agent_view shape per docs.slack.dev/ai/developing-agents (the code already listens for both).
@@ -31,6 +38,15 @@ gh repo create asked-and-answered --public --source=. --push
 7. Grant sandbox Member access to `slackhack@salesforce.com` and `testing@devpost.com`.
 
 ## D. Measure the REAL eval numbers (10 min)
+With Azure OpenAI:
+```bash
+AA_EVAL_LLM=azure \
+  AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com \
+  AZURE_OPENAI_API_KEY=... \
+  AZURE_OPENAI_DEPLOYMENT=your-deployment-name \
+  npx tsx evals/run.ts
+```
+With Anthropic:
 ```bash
 AA_EVAL_LLM=anthropic ANTHROPIC_API_KEY=sk-ant-... npx tsx evals/run.ts
 ```
@@ -38,9 +54,17 @@ Copy the printed numbers into `docs/EVALS.md` and `docs/SUBMISSION.md`. If groun
 recall drops below what the fake LLM showed, note it honestly — the fail-closed and
 injection numbers won't move (they're model-independent).
 
-## E. Deploy 24/7 (20 min)
-- Railway: `railway up` (uses `Dockerfile` + `railway.json`). Set env vars in the dashboard. Omit `SLACK_APP_TOKEN` so it runs HTTP mode; point the Slack app's Request URL at `https://<app>.up.railway.app/slack/events`.
-- Add an uptime monitor (e.g. a free cron-ping to `/health`) through Aug 11.
+## E. Deploy 24/7 on Render (20 min)
+Use Render's free Web Service tier (no credit card required):
+1. `render.yaml` already exists in the repo root. In the Render dashboard → New Web Service → connect this GitHub repo and select the Blueprint.
+2. Set:
+   - **Build command:** `npm ci && npm run typecheck && npm test`
+   - **Start command:** `npm start`
+   - **Environment:** `NODE_ENV=production`, plus all Slack and LLM secrets from `.env`.
+3. Omit `SLACK_APP_TOKEN` so the app runs HTTP mode; point the Slack app's Request URL at `https://<app>.onrender.com/slack/events`.
+4. Add a free uptime monitor (cron-ping to `/health`) through Aug 11.
+
+> Note: Render free web services spin down after 15 min of inactivity and cold-start on the next request. For a Slack event URL this can cause delays; if you have Render paid credits, enable auto-deploy and keep it awake.
 
 ## F. Track decision — Organizations vs New Slack Agent (decide by T-48h)
 - Try the Marketplace path only if you can get **5 real, active workspaces** (Devpost sanctions creating free workspaces). App B = a second app id with distribution activated; keep judging on App A. Time-box this to **6 hours**. One-line disclosure in the submission: installs bootstrapped across own workspaces per Devpost guidance.

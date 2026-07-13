@@ -1,6 +1,6 @@
 # Evaluation
 
-Run: `npx tsx evals/run.ts` (add `AA_EVAL_LLM=anthropic` + `ANTHROPIC_API_KEY` to score with the real drafting model).
+Run: `npx tsx evals/run.ts` (add `AA_EVAL_LLM=anthropic|openai|azure` + the matching credentials to score with the real drafting model).
 
 The harness runs the **real pipeline** against a seeded company workspace
 (`evals/dataset.ts`: 8 evidence docs across public/private channels + 2 planted
@@ -31,6 +31,6 @@ the pipeline's deterministic guards, so they hold regardless of which LLM drafts
 ```
 
 These are honest measurements of the deterministic guarantees. Grounded recall
-and citation faithfulness with the *real* Anthropic model are measured in the
-sandbox (with `AA_EVAL_LLM=anthropic`) and reported in the submission; the
+and citation faithfulness with the *real* model are measured in the sandbox
+(with `AA_EVAL_LLM=anthropic|openai|azure`) and reported in the submission; the
 fail-closed and injection numbers are model-independent by construction.
