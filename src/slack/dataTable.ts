@@ -99,10 +99,12 @@ export function reviewDataTableBlocks(results: DraftResult[], opts: DataTableOpt
       elements: [
         {
           type: 'mrkdwn',
-          text: `${results.length} questions · click a row in the table to open its answer card (requires live data_table row action support).`,
+          text: `${results.length} questions · open a question below to review it, or use the *Review* buttons in the run thread.`,
         },
       ],
     },
+    // data_table rows are not clickable, so give each question a real button.
+    ...reviewButtonRows(results, opts.runId),
     {
       type: 'actions',
       elements: [
@@ -115,6 +117,36 @@ export function reviewDataTableBlocks(results: DraftResult[], opts: DataTableOpt
       ],
     },
   ];
+}
+
+/** Compact per-question Review buttons (max 20 to stay well under the
+ *  100-block modal cap; the table above still lists everything). */
+function reviewButtonRows(results: DraftResult[], runId: string): unknown[] {
+  const blocks: unknown[] = [];
+  for (const r of results.slice(0, 20)) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `${STATE_EMOJI[r.state]} ${r.questionText.slice(0, 150)}`,
+      },
+      accessory: {
+        type: 'button',
+        action_id: 'open_answer_card',
+        value: actionValue(runId, r.questionId),
+        text: { type: 'plain_text', text: 'Review' },
+      },
+    });
+  }
+  if (results.length > 20) {
+    blocks.push({
+      type: 'context',
+      elements: [
+        { type: 'mrkdwn', text: `_…and ${results.length - 20} more — use the Review buttons in the run thread or Export xlsx._` },
+      ],
+    });
+  }
+  return blocks;
 }
 
 function fallbackSectionBlocks(results: DraftResult[], opts: DataTableOptions): unknown[] {

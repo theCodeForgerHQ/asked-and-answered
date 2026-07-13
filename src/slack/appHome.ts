@@ -116,7 +116,13 @@ export async function gatherHomeStats(
 
 export function appHomeBlocks(
   stats: HomeDashboardStats,
-  opts: { invariantCheckUrl?: string | undefined; verifyLedgerUrl?: string | undefined; useDataTable?: boolean | undefined } = {},
+  opts: {
+    invariantCheckUrl?: string | undefined;
+    verifyLedgerUrl?: string | undefined;
+    useDataTable?: boolean | undefined;
+    /** OAuth URL to authorize private-channel search for the viewing user. */
+    userAuthUrl?: string | undefined;
+  } = {},
 ): unknown[] {
   const blocks: unknown[] = [
     {
@@ -152,7 +158,7 @@ export function appHomeBlocks(
         text:
           `*Performance & backlog*\n` +
           `• Auto-answer rate: *${stats.autoAnswerRate}%*\n` +
-          `• Pending human reviews: *${stats.pendingSMEReviews}*\n` +
+          `• Open human reviews (all runs): *${stats.pendingSMEReviews}*\n` +
           `• Stale approved answers: *${stats.staleAnswers}*`,
       },
     },
@@ -210,6 +216,16 @@ export function appHomeBlocks(
               },
             ]
           : []),
+        ...(opts.userAuthUrl
+          ? [
+              {
+                type: 'button',
+                action_id: 'apphome_authorize_search',
+                text: { type: 'plain_text', text: 'Authorize private-channel search' },
+                url: opts.userAuthUrl,
+              },
+            ]
+          : []),
       ],
     },
   ];
@@ -221,18 +237,20 @@ export function appHomeBlocks(
       text: { type: 'mrkdwn', text: '*Recent questionnaire runs*' },
     });
     if (opts.useDataTable !== false) {
+      // Live data_table schema: string caption, no `columns` property, rows are
+      // arrays of cell objects with the first row carrying the column titles.
+      const cell = (text: string) => ({ type: 'raw_text', text });
       blocks.push({
         type: 'data_table',
-        columns: [
-          { name: 'runId', title: 'Run ID', width: 40 },
-          { name: 'when', title: 'When', width: 30 },
-          { name: 'questions', title: 'Questions', width: 15 },
+        caption: 'Recent questionnaire runs',
+        rows: [
+          [cell('Run ID'), cell('When'), cell('Questions')],
+          ...stats.recentRuns.map((r) => [
+            cell(r.runId.slice(0, 16) + '…'),
+            cell(new Date(r.when).toLocaleString()),
+            cell(String(r.questions)),
+          ]),
         ],
-        rows: stats.recentRuns.map((r) => ({
-          runId: r.runId.slice(0, 16) + '…',
-          when: new Date(r.when).toLocaleString(),
-          questions: r.questions,
-        })),
       });
     } else {
       for (const r of stats.recentRuns) {
