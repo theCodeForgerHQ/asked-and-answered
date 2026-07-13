@@ -468,11 +468,18 @@ function sessionForValue(
   actorUserId: string,
 ): { session: ReviewSession; questionId: string } | undefined {
   const parsed = parseValue(value);
-  if (!parsed) return undefined;
+  if (!parsed) {
+    console.warn(`action ignored: unparseable button value ${JSON.stringify(value)}`);
+    return undefined;
+  }
   const record = sessionStore.load(parsed.runId);
-  if (!record) return undefined;
+  if (!record) {
+    console.warn(`action ignored: no stored session for run ${parsed.runId} (expired or lost)`);
+    return undefined;
+  }
   if (Date.now() - new Date(record.updatedAt).getTime() > SESSION_TTL_MS) {
     sessionStore.delete(parsed.runId);
+    console.warn(`action ignored: session for run ${parsed.runId} exceeded TTL`);
     return undefined;
   }
   const session = ReviewSession.fromState(record, depsForUser(actorUserId));
@@ -761,6 +768,25 @@ function isModalInteraction(body: unknown): boolean {
   return (body as { view?: { type?: string } }).view?.type === 'modal';
 }
 
+/** postMessage that retries top-level when the thread anchor is gone
+ *  (deleted origin message, invalid ts) instead of dropping the update. */
+async function postWithThreadFallback(
+  client: typeof app.client,
+  args: { channel: string; thread_ts?: string; text: string; blocks?: unknown },
+): Promise<void> {
+  try {
+    await client.chat.postMessage(args as never);
+  } catch (err) {
+    const code = (err as { data?: { error?: string } }).data?.error;
+    if (args.thread_ts && (code === 'invalid_thread_ts' || code === 'thread_not_found' || code === 'message_not_found')) {
+      const { thread_ts: _dropped, ...rest } = args;
+      await client.chat.postMessage(rest as never);
+      return;
+    }
+    throw err;
+  }
+}
+
 /** Post a status line into the run's origin thread when the actor acted from
  *  a different surface (approver DM, modal), so the requester stays informed. */
 async function notifyOrigin(
@@ -772,7 +798,7 @@ async function notifyOrigin(
   if (!session.originChannel) return;
   if (actedIn && actedIn.channel === session.originChannel) return;
   try {
-    await client.chat.postMessage({
+    await postWithThreadFallback(client, {
       channel: session.originChannel,
       ...(session.originThreadTs ? { thread_ts: session.originThreadTs } : {}),
       text,
@@ -899,18 +925,22 @@ for (const [actionId, verb] of [
         originText = result ? `:no_entry: *${result.questionText}* rejected by <@${userId}> — routed back to humans.` : undefined;
       }
       putSession(resolved.session);
-      await client.chat.postMessage({
+      await postWithThreadFallback(client, {
         channel: t.channel,
         thread_ts: t.thread,
         text,
       });
       if (originText) await notifyOrigin(client, resolved.session, t, originText);
     } catch (err) {
-      await client.chat.postMessage({
-        channel: t.channel,
-        thread_ts: t.thread,
-        text: (err as Error).message,
-      });
+      try {
+        await postWithThreadFallback(client, {
+          channel: t.channel,
+          thread_ts: t.thread,
+          text: (err as Error).message,
+        });
+      } catch (postErr) {
+        console.error(`${actionId} error report failed`, postErr);
+      }
     }
   });
 }
@@ -927,23 +957,36 @@ app.action('confirm_answer', async ({ ack, body, client, action }) => {
     const result = resolved.session.confirm(resolved.questionId, userId, resolved.session.runId);
     putSession(resolved.session);
     const counts = resolved.session.recount();
+    if (result.state === 'verified') {
+      await postWithThreadFallback(client, {
+        channel: t.channel,
+        thread_ts: t.thread,
+        text: `:white_check_mark: *${result.questionText}* is already verified and in the answer library — no further approval needed.`,
+      });
+      return;
+    }
+    const confirmer = resolved.session.confirmedBy.get(resolved.questionId) ?? userId;
     // Hand-off surface: without this picker the "different human" required for
     // final approval has no way to ever see an Approve button.
-    await client.chat.postMessage({
+    await postWithThreadFallback(client, {
       channel: t.channel,
       thread_ts: t.thread,
-      text: `Confirmed by <@${userId}> — pick a different human for final approval. ${planSummaryText(counts)}`,
+      text: `Confirmed by <@${confirmer}> — pick a different human for final approval. ${planSummaryText(counts)}`,
       blocks: [
-        ...sendForApprovalBlocks({ questionText: result.questionText, ref: value ?? '', confirmerId: userId }),
+        ...sendForApprovalBlocks({ questionText: result.questionText, ref: value ?? '', confirmerId: confirmer }),
         { type: 'context', elements: [{ type: 'mrkdwn', text: planSummaryText(counts) }] },
-      ] as never,
+      ],
     });
   } catch (err) {
-    await client.chat.postMessage({
-      channel: t.channel,
-      thread_ts: t.thread,
-      text: (err as Error).message,
-    });
+    try {
+      await postWithThreadFallback(client, {
+        channel: t.channel,
+        thread_ts: t.thread,
+        text: (err as Error).message,
+      });
+    } catch (postErr) {
+      console.error('confirm_answer error report failed', postErr);
+    }
   }
 });
 
@@ -1135,11 +1178,11 @@ app.view('sme_answer_modal', async ({ ack, body, view, client }) => {
     await notifyOrigin(client, resolved.session, undefined, `:raised_hand: <@${smeId}> answered *${result.questionText}* — needs final approval from a different human.`);
     if (resolved.session.originChannel) {
       try {
-        await client.chat.postMessage({
+        await postWithThreadFallback(client, {
           channel: resolved.session.originChannel,
           ...(resolved.session.originThreadTs ? { thread_ts: resolved.session.originThreadTs } : {}),
           text: result.questionText,
-          blocks: answerCardBlocks(result, resolved.session.runId, true) as never,
+          blocks: answerCardBlocks(result, resolved.session.runId, true),
         });
       } catch (err) {
         console.error('sme answer card post failed', err);
@@ -1169,11 +1212,11 @@ app.view('edit_answer_modal', async ({ ack, body, view, client }) => {
     await notifyOrigin(client, resolved.session, undefined, `:pencil2: <@${body.user.id}> edited the draft for *${result.questionText}*.`);
     if (resolved.session.originChannel) {
       try {
-        await client.chat.postMessage({
+        await postWithThreadFallback(client, {
           channel: resolved.session.originChannel,
           ...(resolved.session.originThreadTs ? { thread_ts: resolved.session.originThreadTs } : {}),
           text: result.questionText,
-          blocks: answerCardBlocks(result, resolved.session.runId, confirmed) as never,
+          blocks: answerCardBlocks(result, resolved.session.runId, confirmed),
         });
       } catch (err) {
         console.error('edited answer card post failed', err);
