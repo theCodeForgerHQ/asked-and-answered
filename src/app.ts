@@ -1256,32 +1256,18 @@ app.action('open_review_modal', async ({ ack, body, client, action }) => {
     const actorUserId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
     const resolved = sessionForValue((action as { value?: string }).value, actorUserId);
     if (!resolved) return;
-    const triggerId = (body as { trigger_id: string }).trigger_id;
-    const modalOpts = {
-      runId: resolved.session.runId,
-      title: 'Questionnaire review',
-    };
-    try {
-      await client.views.open({
-        trigger_id: triggerId,
-        view: reviewModalView(resolved.session.results, {
-          ...modalOpts,
-          useDataTable: capabilities.dataTable,
-        }) as never,
-      });
-    } catch (err) {
-      // data_table may be rejected on surfaces/workspaces that don't support
-      // it in modals yet — fall back to the section-based table so the button
-      // never silently does nothing.
-      console.error('open_review_modal data_table render failed; falling back to sections', err);
-      await client.views.open({
-        trigger_id: triggerId,
-        view: reviewModalView(resolved.session.results, {
-          ...modalOpts,
-          useDataTable: false,
-        }) as never,
-      });
-    }
+    // data_table is rejected by views.open (`invalid_arguments` verified
+    // live), and a failed open still consumes the single-use trigger_id, so
+    // a fallback retry can never work (`exchanged_trigger_id`). Modals always
+    // get the section-based table; data_table remains on the App Home surface.
+    await client.views.open({
+      trigger_id: (body as { trigger_id: string }).trigger_id,
+      view: reviewModalView(resolved.session.results, {
+        runId: resolved.session.runId,
+        title: 'Questionnaire review',
+        useDataTable: false,
+      }) as never,
+    });
   } catch (err) {
     console.error('open_review_modal failed', err);
   }
