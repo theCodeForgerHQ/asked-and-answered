@@ -51,7 +51,7 @@ Where is production data hosted?
 **DO:** Point the cursor down the review table: encryption and MFA are **Grounded** with citations; insurance and hosting are **Needs SME**.
 
 **SAY:**
-> "Every question lands in one of three states. Grounded — a fresh answer cited to the actual Slack messages behind it. Needs SME — not enough visible evidence. And Verified — a match a human already approved. Encryption and MFA came back Grounded, because that evidence is in a channel I can see. But look at these two."
+> "And notice what comes back — not a chat thread you have to babysit, but a review table, right inside Slack: one row per question, color-coded, each one something an expert can act on in a click. Every question lands in one of three states. Grounded — a fresh answer cited to the actual Slack messages behind it. Needs SME — not enough visible evidence. And Verified — a match a human already approved. Encryption and MFA came back Grounded, because that evidence is in a channel I can see. But look at these two."
 
 ---
 
@@ -75,7 +75,7 @@ Where is production data hosted?
 **DO:** On the encryption answer card, click **Confirm**. The button changes to **Approve**; have a second user approve it (second browser profile / second sandbox user). 
 
 **SAY:**
-> "Nothing enters the approved library on the agent's say-so. One person confirms, and a second, different person approves — two humans, always. The agent can draft and propose. It can never approve itself."
+> "Nothing enters the approved library on the agent's say-so. One person confirms, and a second, different person approves — two humans, always, right here on the card where the experts already work. The agent can draft and propose. It can never approve itself."
 
 ---
 
@@ -99,7 +99,7 @@ Where is production data hosted?
 **DO:** Click the app's **Home** tab, then click the **Check invariant** quick action (or open `https://asked-and-answered-app.onrender.com/invariant` in a browser tab and show the `"status":"pass"` JSON).
 
 **SAY:**
-> "Underneath all of this is one rule: no answer text ever reaches someone who can't see all of its evidence. We enforce it in reuse, in fresh drafts, and in our MCP server — and we guard that rule two ways. In our build, we run it through the Z3 proof engine: the negation comes back unsatisfiable, so under our model the invariant can't be violated. And live, right here: this health endpoint re-runs the permission property against fresh cases every time you hit it — and it's non-vacuous, so if anyone disabled the guard, it would go red. A proof in the build, and a tripwire in production. That's the one thing a compliance tool cannot get wrong."
+> "This is the app's Home tab — a live, permission-filtered dashboard of every questionnaire run and every approved answer, so a whole team can see the state of things at a glance. And underneath all of it is one rule: no answer text ever reaches someone who can't see all of its evidence. We enforce it in reuse, in fresh drafts, and in our MCP server — and we guard it two ways. We modeled that invariant in the Z3 proof engine and proved its negation is unsatisfiable — a machine-checked guarantee. And live, right here, this permission property re-runs against fresh cases every time you check it, and it's non-vacuous — so if anyone disabled the guard, it would go red. A machine-checked proof, and a live tripwire. That's the one thing a compliance tool cannot get wrong."
 
 ---
 
@@ -107,7 +107,7 @@ Where is production data hosted?
 **DO:** Return to the Messages tab (the completed run visible). Optionally click **Export xlsx** to show the finished file downloading.
 
 **SAY:**
-> "Asked & Answered: your Slack history, turned into finished questionnaires — cited, approved, tamper-evident, and provably fail-closed. One rule the whole way through: no proof, no answer. Everything you just saw reproduces in your sandbox. Thanks for watching."
+> "Asked & Answered: your Slack history, turned into finished questionnaires — cited, approved, tamper-evident, and provably fail-closed. And all of it native to Slack — the review table, the Home dashboard, the export — no separate knowledge base to build or maintain, because the workspace *is* the knowledge base. One rule the whole way through: no proof, no answer. Everything you just saw reproduces in your sandbox. Thanks for watching."
 
 ---
 
