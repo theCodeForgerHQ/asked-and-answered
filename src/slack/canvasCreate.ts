@@ -1,6 +1,6 @@
 import type { WebClient } from '@slack/web-api';
 import type { CanvasDocument } from './canvasExport.js';
-import { canvasToApiSections, canvasToMarkdown } from './canvasExport.js';
+import { canvasToMarkdown } from './canvasExport.js';
 
 export interface CanvasCreateResult {
   kind: 'native' | 'markdown_fallback' | 'scope_missing';
@@ -60,9 +60,12 @@ export async function createCanvasOrFallback(
     return uploadMarkdownFallback(client, channelId, threadTs, doc, opts.fallbackComment);
   }
   try {
+    // canvases.create accepts exactly one document_content shape:
+    // { type: "markdown", markdown } — a sections payload is rejected
+    // with invalid_arguments.
     const canvas = await client.canvases.create({
       title: doc.title,
-      document_content: { type: 'canvas', sections: canvasToApiSections(doc) } as never,
+      document_content: { type: 'markdown', markdown: canvasToMarkdown(doc) },
     });
     if (canvas.canvas_id) {
       const team = opts.teamId ?? process.env.SLACK_TEAM_ID ?? '';

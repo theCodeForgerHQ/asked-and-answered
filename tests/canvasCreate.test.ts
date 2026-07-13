@@ -8,9 +8,11 @@ function fakeClient(overrides: {
   uploadOk?: boolean;
 } = {}) {
   const uploads: unknown[] = [];
+  const createArgs: unknown[] = [];
   const client = {
     canvases: {
-      create: async () => {
+      create: async (args: unknown) => {
+        createArgs.push(args);
         if (!('canvas_id' in overrides.createResult!)) {
           const err = new Error(`OpenAI request failed: 400 ${overrides.createResult?.error ?? ''}`);
           (err as any).data = overrides.createResult;
@@ -26,7 +28,7 @@ function fakeClient(overrides: {
       },
     },
   };
-  return { client: client as any, uploads };
+  return { client: client as any, uploads, createArgs };
 }
 
 const result: DraftResult = {
@@ -44,6 +46,15 @@ describe('createCanvasOrFallback', () => {
     const res = await createCanvasOrFallback(client, 'C', '1.0', doc);
     expect(res.kind).toBe('native');
     expect(res.canvasId).toBe('C123');
+  });
+
+  test('sends markdown document_content — the only shape canvases.create accepts', async () => {
+    const { client, createArgs } = fakeClient({ createResult: { canvas_id: 'C123' }, uploadOk: true });
+    const doc = buildCanvasDocument([result], { runId: 'r1', requesterId: 'U1', title: 'T' });
+    await createCanvasOrFallback(client, 'C', '1.0', doc);
+    const args = createArgs[0] as { document_content?: { type?: string; markdown?: string } };
+    expect(args.document_content?.type).toBe('markdown');
+    expect(args.document_content?.markdown).toContain('Do you encrypt data at rest?');
   });
 
   test('returns scope_missing and does not fall back on missing_scope', async () => {
