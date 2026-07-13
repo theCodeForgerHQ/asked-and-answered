@@ -28,18 +28,25 @@ const MIXED: DraftResult[] = [
 ];
 
 describe('reviewDataTableBlocks with data_table', () => {
-  test('emits a data_table block with columns and rows', () => {
+  test('emits a data_table block matching the live API schema (caption string + raw_text cell rows)', () => {
+    // Live validation (views.publish): caption must be a string, `columns` is
+    // an invalid property, and every row is an array of cell objects.
     const blocks = reviewDataTableBlocks(MIXED, { runId: 'run-abc', useDataTable: true });
     const table = blocks.find((b) => (b as { type?: string }).type === 'data_table') as {
-      columns: Array<{ name: string }>;
-      rows: Array<{ question: string; status: string }>;
+      caption: unknown;
+      columns?: unknown;
+      rows: Array<Array<{ type: string; text: string }>>;
     };
 
     expect(table).toBeDefined();
-    expect(table.columns.map((c) => c.name)).toEqual(['question', 'status', 'answer', 'citations']);
-    expect(table.rows).toHaveLength(3);
-    expect(table.rows[0]?.status).toBe('Verified');
-    expect(table.rows[2]?.status).toBe('Needs SME');
+    expect(typeof table.caption).toBe('string');
+    expect(table.columns).toBeUndefined();
+    // Header row + 3 result rows, each cell a raw_text object.
+    expect(table.rows).toHaveLength(4);
+    expect(table.rows[0]?.map((c) => c.text)).toEqual(['Question', 'Status', 'Answer preview', 'Citations']);
+    expect(table.rows.flat().every((c) => c.type === 'raw_text')).toBe(true);
+    expect(table.rows[1]?.[1]?.text).toBe('Verified');
+    expect(table.rows[3]?.[1]?.text).toBe('Needs SME');
   });
 
   test('includes export xlsx action', () => {

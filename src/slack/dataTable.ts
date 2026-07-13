@@ -70,12 +70,19 @@ export function reviewDataTableBlocks(results: DraftResult[], opts: DataTableOpt
     return fallbackSectionBlocks(results, opts);
   }
 
-  const rows = results.map((r) => ({
-    question: r.questionText,
-    status: STATE_LABEL[r.state],
-    answer: r.state === 'needs_sme' ? '' : (r.answerText ?? '').slice(0, 200),
-    citations: (r.citations ?? []).length,
-  }));
+  // Live data_table schema (validated against views.publish): caption is a
+  // plain string, there is no `columns` property, and rows are arrays of
+  // cell objects. The first row carries the column titles.
+  const cell = (text: string) => ({ type: 'raw_text', text });
+  const rows = [
+    [cell('Question'), cell('Status'), cell('Answer preview'), cell('Citations')],
+    ...results.map((r) => [
+      cell(r.questionText),
+      cell(STATE_LABEL[r.state]),
+      cell(r.state === 'needs_sme' ? '' : (r.answerText ?? '').slice(0, 200)),
+      cell(String((r.citations ?? []).length)),
+    ]),
+  ];
 
   return [
     {
@@ -84,12 +91,7 @@ export function reviewDataTableBlocks(results: DraftResult[], opts: DataTableOpt
     },
     {
       type: 'data_table',
-      columns: [
-        { name: 'question', title: 'Question', width: 40 },
-        { name: 'status', title: 'Status', width: 12 },
-        { name: 'answer', title: 'Answer preview', width: 36 },
-        { name: 'citations', title: 'Citations', width: 12 },
-      ],
+      caption: opts.title ?? 'Questionnaire review',
       rows,
     },
     {
