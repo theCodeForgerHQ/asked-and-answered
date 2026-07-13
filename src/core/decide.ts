@@ -1,5 +1,6 @@
 import type { Citation } from './library.js';
-import type { DomainEvent, AnswerApproved, AnswerEdited, AnswerProposed } from './events.js';
+import type { DomainEvent, AnswerApproved, AnswerConfirmed, AnswerEdited, AnswerProposed } from './events.js';
+import { canApplyTransition, type ActorType } from './stateMachine.js';
 
 export interface DraftResultLike {
   questionId: string;
@@ -11,11 +12,12 @@ export interface DraftResultLike {
 }
 
 export type Command =
-  | { type: 'Approve'; questionId: string; actor: string; result: DraftResultLike; answerId?: number }
-  | { type: 'Reject'; questionId: string; actor: string; result: DraftResultLike }
-  | { type: 'Edit'; questionId: string; actor: string; newText: string; result: DraftResultLike; answerId?: number }
-  | { type: 'SmeProvide'; questionId: string; actor: string; answerText: string; result: DraftResultLike }
-  | { type: 'Export'; runId: string; actor: string }
+  | { type: 'Approve'; questionId: string; actor: string; actorType: ActorType; result: DraftResultLike; answerId?: number }
+  | { type: 'Confirm'; questionId: string; actor: string; actorType: ActorType; result: DraftResultLike; answerId?: number }
+  | { type: 'Reject'; questionId: string; actor: string; actorType: ActorType; result: DraftResultLike }
+  | { type: 'Edit'; questionId: string; actor: string; actorType: ActorType; newText: string; result: DraftResultLike; answerId?: number }
+  | { type: 'SmeProvide'; questionId: string; actor: string; actorType: ActorType; answerText: string; result: DraftResultLike }
+  | { type: 'Export'; runId: string; actor: string; actorType: ActorType }
   | { type: 'Propose'; answerId: number; questionText: string; answerText: string; citations: Citation[] };
 
 export interface DecideResult {
@@ -39,6 +41,13 @@ function isRejected(events: DomainEvent[], questionId: string): boolean {
   return events.some(
     (e) => e.type === 'AnswerRejected' && e.questionId === questionId,
   );
+}
+
+function latestConfirmEvent(events: DomainEvent[], questionId: string, questionText: string): AnswerConfirmed | undefined {
+  return events
+    .filter((e): e is AnswerConfirmed => e.type === 'AnswerConfirmed')
+    .filter((e) => e.questionId === questionId || e.questionId === questionText)
+    .at(-1);
 }
 
 function isProposed(events: DomainEvent[], answerId: number): boolean {
@@ -69,7 +78,7 @@ function isApproved(events: DomainEvent[], answerId: number): boolean {
 export function decide(events: DomainEvent[], command: Command): DecideResult {
   switch (command.type) {
     case 'Approve': {
-      const { result, actor, questionId } = command;
+      const { result, actor, actorType, questionId } = command;
       if (result.state === 'verified') {
         return { ok: true, events: [] };
       }
@@ -79,8 +88,24 @@ export function decide(events: DomainEvent[], command: Command): DecideResult {
       if (isRejected(events, questionId)) {
         return { ok: false, error: 'cannot approve a rejected question without re-proposing' };
       }
+      const confirm = latestConfirmEvent(events, questionId, result.questionText);
+      if (!confirm) {
+        return { ok: false, error: 'answer must be confirmed before it can be approved' };
+      }
+      if (confirm.actor === actor) {
+        return { ok: false, error: 'approver must be a different human than the confirmer' };
+      }
       const previous = latestApproveEvent(events, result.questionText);
       const answerId = previous ? previous.answerId : command.answerId ?? Date.now();
+      const transition = canApplyTransition(
+        events,
+        'AnswerApproved',
+        actorType,
+        result.questionText,
+        (result.citations ?? []).length > 0 || !!result.answerText,
+        questionId,
+      );
+      if (!transition.ok) return { ok: false, error: transition.error };
       const ev: AnswerApproved = {
         type: 'AnswerApproved',
         answerId,
@@ -88,41 +113,81 @@ export function decide(events: DomainEvent[], command: Command): DecideResult {
         answerText: result.answerText,
         citations: result.citations ?? [],
         actor,
+        actorType: 'human',
+        ts: now(),
+      };
+      return { ok: true, events: [ev] };
+    }
+
+    case 'Confirm': {
+      const { result, actor, actorType, questionId } = command;
+      if (result.state === 'verified') {
+        return { ok: true, events: [] };
+      }
+      if (!result.answerText) {
+        return { ok: false, error: 'cannot confirm a draft with no answer text' };
+      }
+      if (isRejected(events, questionId)) {
+        return { ok: false, error: 'cannot confirm a rejected question without re-proposing' };
+      }
+      const previous = latestConfirmEvent(events, questionId, result.questionText);
+      const answerId = previous ? previous.answerId : command.answerId ?? Date.now();
+      const transition = canApplyTransition(
+        events,
+        'AnswerConfirmed',
+        actorType,
+        result.questionText,
+        false,
+        questionId,
+      );
+      if (!transition.ok) return { ok: false, error: transition.error };
+      const ev: AnswerConfirmed = {
+        type: 'AnswerConfirmed',
+        answerId: answerId ?? Date.now(),
+        questionId,
+        actor,
+        actorType: 'human',
         ts: now(),
       };
       return { ok: true, events: [ev] };
     }
 
     case 'Reject': {
-      const { questionId, actor } = command;
+      const { questionId, actor, actorType } = command;
       if (isRejected(events, questionId)) {
         return { ok: true, events: [] };
       }
+      const transition = canApplyTransition(events, 'AnswerRejected', actorType, questionId, false, questionId);
+      if (!transition.ok) return { ok: false, error: transition.error };
       const ev: DomainEvent = {
         type: 'AnswerRejected',
         questionId,
         actor,
+        actorType: 'human',
         ts: now(),
       };
       return { ok: true, events: [ev] };
     }
 
     case 'Edit': {
-      const { newText, actor, result } = command;
+      const { newText, actor, actorType, result, questionId } = command;
       const previous = latestApproveEvent(events, result.questionText);
       const answerId = previous ? previous.answerId : command.answerId ?? Date.now();
+      const transition = canApplyTransition(events, 'AnswerEdited', actorType, result.questionText, false, questionId);
+      if (!transition.ok) return { ok: false, error: transition.error };
       const ev: AnswerEdited = {
         type: 'AnswerEdited',
         answerId,
         newText,
         actor,
+        actorType: 'human',
         ts: now(),
       };
       return { ok: true, events: [ev] };
     }
 
     case 'SmeProvide': {
-      const { answerText, actor, result, questionId } = command;
+      const { answerText, actor, actorType, result, questionId } = command;
       const provideEv: DomainEvent = {
         type: 'DraftProduced',
         runId: 'sme',
@@ -131,19 +196,20 @@ export function decide(events: DomainEvent[], command: Command): DecideResult {
         citations: [],
         ts: now(),
       };
-      const approve = decide([...events, provideEv], {
-        type: 'Approve',
+      const confirm = decide([...events, provideEv], {
+        type: 'Confirm',
         questionId,
         actor,
+        actorType,
         result: { ...result, state: 'grounded', answerText, citations: [] },
       });
-      if (!approve.ok) return approve;
-      return { ok: true, events: [provideEv, ...(approve.events ?? [])] };
+      if (!confirm.ok) return confirm;
+      return { ok: true, events: [provideEv, ...(confirm.events ?? [])] };
     }
 
     case 'Export': {
-      const { runId, actor } = command;
-      return { ok: true, events: [{ type: 'Exported', runId, actor, ts: now() }] };
+      const { runId, actor, actorType } = command;
+      return { ok: true, events: [{ type: 'Exported', runId, actor, actorType, ts: now() }] };
     }
 
     case 'Propose': {
@@ -154,6 +220,8 @@ export function decide(events: DomainEvent[], command: Command): DecideResult {
       if (isApproved(events, answerId)) {
         return { ok: false, error: 'answer already approved' };
       }
+      const transition = canApplyTransition(events, 'AnswerProposed', 'agent', questionText, citations.length > 0, String(answerId));
+      if (!transition.ok) return { ok: false, error: transition.error };
       const ev: AnswerProposed = {
         type: 'AnswerProposed',
         answerId,
@@ -161,6 +229,7 @@ export function decide(events: DomainEvent[], command: Command): DecideResult {
         answerText,
         citations,
         actor: 'agent',
+        actorType: 'agent',
         ts: now(),
       };
       return { ok: true, events: [ev] };

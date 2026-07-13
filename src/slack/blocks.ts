@@ -105,6 +105,12 @@ export function reviewTableBlocks(
       value: actionValue(runId, 'export'),
       text: { type: 'plain_text', text: 'Export xlsx' },
     },
+    {
+      type: 'button',
+      action_id: 'export_canvas',
+      value: actionValue(runId, 'export'),
+      text: { type: 'plain_text', text: 'Export Canvas' },
+    },
   ];
   if (hasNext) {
     toolbar.unshift({
@@ -120,7 +126,7 @@ export function reviewTableBlocks(
   return blocks;
 }
 
-export function answerCardBlocks(r: DraftResult, runId = ''): Block[] {
+export function answerCardBlocks(r: DraftResult, runId = '', confirmed = false): Block[] {
   const value = actionValue(runId, r.questionId);
   const blocks: Block[] = [
     {
@@ -178,31 +184,42 @@ export function answerCardBlocks(r: DraftResult, runId = ''): Block[] {
     });
   }
 
-  blocks.push({
-    type: 'actions',
-    elements: [
-      {
-        type: 'button',
-        action_id: 'approve_answer',
-        value,
-        style: 'primary',
-        text: { type: 'plain_text', text: 'Approve' },
-      },
-      {
-        type: 'button',
-        action_id: 'edit_answer',
-        value,
-        text: { type: 'plain_text', text: 'Edit' },
-      },
-      {
-        type: 'button',
-        action_id: 'reject_answer',
-        value,
-        style: 'danger',
-        text: { type: 'plain_text', text: 'Reject' },
-      },
-    ],
-  });
+  if (r.state !== 'verified') {
+    const primaryButton = confirmed
+      ? {
+          type: 'button',
+          action_id: 'approve_answer',
+          value,
+          style: 'primary',
+          text: { type: 'plain_text', text: 'Approve' },
+        }
+      : {
+          type: 'button',
+          action_id: 'confirm_answer',
+          value,
+          style: 'primary',
+          text: { type: 'plain_text', text: 'Confirm' },
+        };
+    blocks.push({
+      type: 'actions',
+      elements: [
+        primaryButton,
+        {
+          type: 'button',
+          action_id: 'edit_answer',
+          value,
+          text: { type: 'plain_text', text: 'Edit' },
+        },
+        {
+          type: 'button',
+          action_id: 'reject_answer',
+          value,
+          style: 'danger',
+          text: { type: 'plain_text', text: 'Reject' },
+        },
+      ],
+    });
+  }
 
   return blocks;
 }

@@ -47,6 +47,8 @@ function eventMeta(event: DomainEvent): { action: string; actor: string; questio
       return { action: event.type, actor: event.actor, questionId: String(event.answerId) };
     case 'AnswerRejected':
       return { action: event.type, actor: event.actor, questionId: event.questionId };
+    case 'AnswerConfirmed':
+      return { action: event.type, actor: event.actor, questionId: event.questionId };
     case 'AnswerProposed':
       return { action: event.type, actor: event.actor, questionId: event.questionText };
     case 'Exported':

@@ -52,19 +52,31 @@ export class OpenAiDrafter implements DraftingLlm {
       messages: [{ role: 'user', content: buildDraftPrompt(question, hits) }],
     };
 
-    const res = await fetch(this.url, {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify(body),
-    });
+    const maxRetries = 5;
+    let attempt = 0;
+    while (true) {
+      const res = await fetch(this.url, {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify(body),
+      });
 
-    const data = (await res.json()) as ChatCompletionResponse;
-    if (!res.ok || data.error) {
-      throw new Error(`OpenAI request failed: ${res.status} ${data.error?.message ?? ''}`);
+      if (res.status === 429 && attempt < maxRetries) {
+        const retryAfter = res.headers.get('retry-after');
+        const delayMs = retryAfter ? Math.max(500, parseInt(retryAfter, 10) * 1000) : 1000 * 2 ** attempt;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        attempt++;
+        continue;
+      }
+
+      const data = (await res.json()) as ChatCompletionResponse;
+      if (!res.ok || data.error) {
+        throw new Error(`OpenAI request failed: ${res.status} ${data.error?.message ?? ''}`);
+      }
+
+      const text = data.choices?.[0]?.message?.content ?? '';
+      return parseDraftReply(text);
     }
-
-    const text = data.choices?.[0]?.message?.content ?? '';
-    return parseDraftReply(text);
   }
 }
 

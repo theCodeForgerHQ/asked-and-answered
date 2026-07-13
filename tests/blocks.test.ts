@@ -84,15 +84,23 @@ describe('reviewTableBlocks (fallback surface)', () => {
 });
 
 describe('answerCardBlocks', () => {
-  test('grounded card shows draft, citations, and approve/edit/reject buttons', () => {
+  test('grounded card shows draft, citations, and confirm/edit/reject buttons', () => {
     const blocks = answerCardBlocks(MIXED[1] as DraftResult);
     const json = JSON.stringify(blocks);
 
     expect(json).toContain('Quarterly restore drills.');
     expect(json).toContain('https://s.example/p2');
-    expect(json).toContain('"action_id":"approve_answer"');
+    expect(json).toContain('"action_id":"confirm_answer"');
     expect(json).toContain('"action_id":"reject_answer"');
     expect(json).toContain('"action_id":"edit_answer"');
+  });
+
+  test('confirmed grounded card shows approve instead of confirm', () => {
+    const blocks = answerCardBlocks(MIXED[1] as DraftResult, '', true);
+    const json = JSON.stringify(blocks);
+
+    expect(json).toContain('"action_id":"approve_answer"');
+    expect(json).not.toContain('"action_id":"confirm_answer"');
   });
 
   test('verified card shows the approval provenance', () => {

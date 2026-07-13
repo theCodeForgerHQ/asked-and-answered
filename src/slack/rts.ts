@@ -23,6 +23,7 @@ export class ActionTokenStore {
 export type SlackApiCall = (
   method: string,
   args: Record<string, unknown>,
+  token?: string,
 ) => Promise<unknown>;
 
 /**
@@ -65,6 +66,7 @@ export class SlackRtsClient implements RtsClient {
     private readonly apiCall: SlackApiCall,
     private readonly tokens: ActionTokenStore,
     private readonly userId: string,
+    private readonly userToken?: string,
   ) {}
 
   async searchContext(params: RtsSearchParams): Promise<{ hits: RtsHit[] }> {
@@ -77,6 +79,7 @@ export class SlackRtsClient implements RtsClient {
     };
     const token = this.tokens.latest(this.userId);
     if (token) args.action_token = token;
+    if (this.userToken) args.token = this.userToken;
 
     const raw = await this.apiCall('assistant.search.context', args);
     return { hits: parseRtsResponse(raw) };

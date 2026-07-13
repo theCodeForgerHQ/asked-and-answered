@@ -14,8 +14,8 @@
    - **Verified** — matches an answer an SME already approved (re-checked against *your* permissions before reuse)
    - **Grounded** — a new draft, cited to Slack messages/files you can see
    - **Needs SME** — insufficient evidence; the agent refuses to draft and routes to the right human
-4. Review in a native table; approve/edit/reject per row. Approvals append to a hash-chained ledger (`/aa verify` proves it).
-5. Export the finished questionnaire (xlsx) with citations and approval records. Approved answers compound: the next questionnaire starts mostly done.
+4. Review in a native table; **confirm then approve** (two distinct human gates), edit, or reject per row. Every action appends to a hash-chained, event-sourced ledger (`verify ledger` proves it).
+5. Export the finished questionnaire (xlsx, Canvas, or Workflow Builder step) with citations and approval records. Approved answers compound: the next questionnaire starts mostly done.
 
 ## The invariant
 
@@ -23,9 +23,9 @@
 
 ## Built with (Slack Agent Builder Challenge)
 
-- **Slack AI capabilities** — agent_view surface, streaming plans, task cards, native Block Kit review UI
-- **Real-Time Search API** — the evidence engine, with a rate-limit-aware query planner
-- **MCP** — ships `asked-answered-mcp`, exposing the approved-answer library to Claude/Cursor/Slackbot as read-only tools
+- **Slack AI capabilities** — agent_view surface, App Home dashboard, Data Table, Canvas export, Workflow Builder custom step
+- **Real-Time Search API** — the evidence engine, scoped per user with action tokens and optional per-user OAuth for private-channel search
+- **MCP** — ships `asked-answered-mcp`, exposing the approved-answer library to Claude/Cursor/Slackbot as read-only tools; write path is human-gated
 
 ## Development
 
@@ -33,10 +33,14 @@
 
 ```bash
 npm install
-npm test          # 91 hermetic tests — no network, no Slack
+npm test          # 214 hermetic tests — no network, no Slack
 npm run typecheck
-npm run smoke     # full loop offline: parse → draft → review → tamper → export
-npx tsx evals/run.ts   # measured eval numbers (default: deterministic fake LLM)
+npm run smoke     # full loop offline: parse → draft → review → confirm → approve → tamper → export
+npx tsx evals/run.ts   # 127-case measured eval with held-out set (default: deterministic fake LLM)
+npx tsx scripts/verifyInvariantZ3.ts  # machine-checked permission invariant
+npx tsx scripts/verifyPipelineCodeLevel.ts  # code-level Z3 proof tied to actual pipeline guards
+npx tsx scripts/runCounterfactual.ts  # simulated impact numbers
+npx tsx scripts/runLoadBenchmark.ts   # throughput benchmark
 ```
 
 ## Run against a real sandbox

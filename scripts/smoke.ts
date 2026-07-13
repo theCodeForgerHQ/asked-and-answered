@@ -81,10 +81,12 @@ const insurance = run1.results.find((r) => r.questionText.includes('insurance'))
 assert.equal(insurance?.state, 'needs_sme');
 assert.equal(insurance?.answerText, undefined);
 
-// ---- Review actions ----
-run1.approve('q1', 'U_SME', run1.runId);
+// ---- Review actions: two mandatory human gates ----
+run1.confirm('q1', 'U_SME', run1.runId);
+run1.approve('q1', 'U_REVIEWER', run1.runId);
 run1.smeProvide(insurance?.questionId ?? '', 'U_SME', 'Yes, $5M coverage via Acme, renewed annually.', run1.runId);
-assert.equal(deps.ledger.entries().length, 2, 'two ledger entries after review');
+run1.approve(insurance?.questionId ?? '', 'U_REVIEWER', run1.runId);
+assert.equal(deps.ledger.entries().length, 4, 'four ledger entries after confirm+approve for both answers');
 
 // ---- Run 2: compounding ----
 const run2 = await runQuestionnaire(parseText(QUESTIONNAIRE), 'U_OTHER', deps, () => {});

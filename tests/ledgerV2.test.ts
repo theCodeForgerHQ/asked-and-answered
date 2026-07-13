@@ -17,6 +17,7 @@ describe('LedgerV2', () => {
       answerText: 'A',
       citations: [],
       actor: 'U_SME',
+      actorType: 'human',
       ts: '2026-01-01',
     });
 
@@ -34,6 +35,7 @@ describe('LedgerV2', () => {
       answerText: 'A',
       citations: [],
       actor: 'U_SME',
+      actorType: 'human',
       ts: '2026-01-01',
     });
 
@@ -50,6 +52,7 @@ describe('LedgerV2', () => {
       answerText: 'A',
       citations: [],
       actor: 'U_SME',
+      actorType: 'human',
       ts: '2026-01-01',
     });
 
@@ -68,6 +71,7 @@ describe('LedgerV2', () => {
       answerText: 'A',
       citations: [],
       actor: 'U_SME',
+      actorType: 'human',
       ts: '2026-01-01',
     } as AnswerApproved);
 

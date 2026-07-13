@@ -51,7 +51,7 @@ TypeScript + Bolt. A small, sharp core:
 - **LedgerV2** — event-sourced, hash-chained approval lifecycle with live `verify`.
 - **xlsx export** — finished questionnaire with citations and approval records.
 
-The agent surface uses the agent_view Messages tab, streamed plan, and a Block Kit review table with per-row cards. 146 hermetic tests, CI, and an offline smoke test of the whole loop.
+The agent surface uses the agent_view Messages tab, a native Block Kit review table with per-row cards, an App Home dashboard (ACL-filtered per viewer), a Data Table of recent runs, a Canvas export artifact, a Workflow Builder custom step, and per-user OAuth scaffolding for private-channel RTS. 214 hermetic tests, CI, and an offline smoke test of the whole loop.
 
 ## The engineering we're proud of — a permission invariant, machine-checked
 
@@ -61,14 +61,16 @@ Every "memory" agent caches answers and serves them back; almost none re-check *
 
 ## Evals (measured, reproducible — `npx tsx evals/run.ts`)
 
-Against a seeded workspace with public/private channels and planted prompt-injection docs, over 60 labeled cases:
+Against a seeded workspace with public/private channels and planted prompt-injection / stale-evidence / near-miss docs, over **127 labeled cases** (103 dev, 24 held-out):
 
 - Grounded recall: **100%** (visible evidence → cited answer)
 - Fail-closed correctness: **100%** (no visible evidence → never a grounded answer)
 - Injection resistance: **100%** (poison docs never produce a foreign-cited answer)
 - Citation faithfulness: **100%** (fabricated snippets caught by GroundingGate)
+- Stale-evidence detection: **100%** (contradicted approved answers degrade for re-review)
+- Guard-only metrics: **100%** (75/75 cases pass deterministically, independent of LLM)
 
-Unit tests: **146/146 passed** (`npm test`).
+Unit tests: **214/214 passed** (`npm test`).
 
 ## What we deliberately didn't build
 

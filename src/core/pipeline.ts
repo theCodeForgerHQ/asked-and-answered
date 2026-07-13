@@ -2,6 +2,8 @@ import type { AnswerLibrary, Citation, VisibilityChecker } from './library.js';
 import { GroundingGate } from './grounding.js';
 import type { QuestionEvidence, RtsHit } from './planner.js';
 import type { Question } from './types.js';
+import { sanitizeHits } from './sanitize.js';
+import { detectDrift } from './driftResolver.js';
 
 export type LlmDraft =
   | { kind: 'answer'; answerText: string; citedPermalinks: string[] }
@@ -90,6 +92,13 @@ export class DraftingPipeline {
       return { ...base, state: 'needs_sme', reason: 'acl_degraded' };
     }
     if (lookup.status === 'verified') {
+      // Lore-style deterministic drift resolver: even if the answer's own
+      // citations are visible, newer workspace evidence may reverse the value.
+      const hits = evidence?.hits ?? [];
+      const drift = detectDrift(lookup.answer, hits);
+      if (drift.drift) {
+        return { ...base, state: 'needs_sme', reason: 'stale_evidence' };
+      }
       return {
         ...base,
         state: 'verified',
@@ -116,9 +125,12 @@ export class DraftingPipeline {
     }
 
     // 3) Evidence-grounded drafting.
+    // Sanitize model inputs: NFKC + strip zero-width/directional chars. The
+    // original citations remain untouched; this only hardens the prompt.
+    const sanitizedHits = sanitizeHits(evidence.hits);
     let draft: LlmDraft;
     try {
-      draft = await this.llm.draft(question, evidence.hits);
+      draft = await this.llm.draft(question, sanitizedHits);
     } catch {
       return { ...base, state: 'needs_sme', reason: 'llm_error' };
     }

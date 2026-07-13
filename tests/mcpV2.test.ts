@@ -28,11 +28,19 @@ describe('MCP server v2 — human-gated writes', () => {
     return client;
   }
 
-  test('propose_answer tool is absent when writes are disabled', async () => {
+  test('propose_answer is discoverable but returns writes_disabled when writes are disabled', async () => {
     const client = await connectedClient(false);
-    const tools = await client.listTools();
-    const names = tools.tools.map((t) => t.name);
-    expect(names).not.toContain('propose_answer');
+    const result = await client.callTool({
+      name: 'propose_answer',
+      arguments: {
+        questionText: 'Do you encrypt data at rest?',
+        answerText: 'Yes, AES-256.',
+        citations: [{ permalink: 'p/enc', channelId: 'C1', ts: '1' }],
+      },
+    });
+    const text = (result.content as Array<{ type: string; text: string }>)[0]?.text ?? '';
+    expect(text).toContain('writes_disabled');
+    expect(ledgerV2.entries()).toHaveLength(0);
   });
 
   test('propose_answer creates a pending proposal event but does not approve it', async () => {

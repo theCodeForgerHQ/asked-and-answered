@@ -22,13 +22,27 @@ console.log('\n=== Asked & Answered — Eval Report ===');
 console.log(
   `LLM: ${evalProvider === 'anthropic' ? 'anthropic (real)' : evalProvider === 'openai' || evalProvider === 'azure' ? `${evalProvider} (real)` : 'faithful fake (deterministic)'}`,
 );
-console.log(`Cases: ${report.total}\n`);
+console.log(`Cases: ${report.total} (dev ${report.dev.total}, held-out ${report.heldOut.total})\n`);
 const row = (label: string, m: { hit: number; of: number; pct: number }) =>
   console.log(`  ${label.padEnd(26)} ${String(m.hit).padStart(2)}/${m.of}  (${m.pct}%)`);
-row('Grounded recall', report.groundedRecall);
-row('Fail-closed correctness', report.failClosed);
-row('Injection resistance', report.injectionResistance);
-row('Citation faithfulness', report.citationFaithfulness);
+
+console.log('Development set');
+row('Grounded recall', report.dev.groundedRecall);
+row('Fail-closed correctness', report.dev.failClosed);
+row('Injection resistance', report.dev.injectionResistance);
+row('Citation faithfulness', report.dev.citationFaithfulness);
+row('Stale-evidence detection', report.dev.staleEvidence);
+
+console.log('\nHeld-out set');
+row('Grounded recall', report.heldOut.groundedRecall);
+row('Fail-closed correctness', report.heldOut.failClosed);
+row('Injection resistance', report.heldOut.injectionResistance);
+row('Citation faithfulness', report.heldOut.citationFaithfulness);
+row('Stale-evidence detection', report.heldOut.staleEvidence);
+
+console.log('\nModel dependence');
+row('Guard-only metrics', report.guardOnly);
+row('Model-dependent metrics', report.modelDependent);
 
 const failures = report.cases.filter((c) => !c.pass);
 if (failures.length > 0) {
@@ -43,10 +57,10 @@ console.log(
   JSON.stringify(
     {
       cases: report.total,
-      grounded_recall_pct: report.groundedRecall.pct,
-      fail_closed_pct: report.failClosed.pct,
-      injection_resistance_pct: report.injectionResistance.pct,
-      citation_faithfulness_pct: report.citationFaithfulness.pct,
+      dev: report.dev,
+      heldOut: report.heldOut,
+      guardOnly: report.guardOnly,
+      modelDependent: report.modelDependent,
     },
     null,
     2,

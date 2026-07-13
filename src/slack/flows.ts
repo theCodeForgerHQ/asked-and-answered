@@ -28,12 +28,26 @@ export class ReviewSession {
    *  earlier run in the same thread cannot act on this run's answers. */
   public readonly runId: string = randomUUID();
 
+  /** Question IDs that have passed the first mandatory human gate. */
+  public readonly confirmedQuestionIds = new Set<string>();
+
   constructor(
     public readonly results: DraftResult[],
     public readonly counts: PlanCounts,
     private readonly deps: RunDeps,
     public readonly requesterId: string,
   ) {}
+
+  /** Reconstruct a session from durable state + fresh per-request deps. */
+  static fromState(
+    state: { runId: string; results: DraftResult[]; counts: PlanCounts; requesterId: string; confirmedQuestionIds?: string[] },
+    deps: RunDeps,
+  ): ReviewSession {
+    const session = new ReviewSession(state.results, state.counts, deps, state.requesterId);
+    (session as unknown as { runId: string }).runId = state.runId;
+    for (const id of state.confirmedQuestionIds ?? []) session.confirmedQuestionIds.add(id);
+    return session;
+  }
 
   private mustFind(questionId: string): DraftResult {
     const r = this.results.find((x) => x.questionId === questionId);
@@ -52,6 +66,35 @@ export class ReviewSession {
     for (const ev of events) this.deps.ledgerV2.append(ev);
   }
 
+  confirm(questionId: string, actor: string, runId?: string): DraftResult {
+    this.assertRun(runId);
+    const r = this.mustFind(questionId);
+    if (r.state === 'verified') return r;
+    if (!r.answerText) {
+      throw new Error(`question ${questionId} has no draft to confirm — route it to an SME instead`);
+    }
+    if (this.confirmedQuestionIds.has(questionId)) return r;
+
+    this.deps.ledger.append({
+      action: 'confirm',
+      actor,
+      questionId,
+      answerHashInput: r.answerText,
+      evidenceRefs: (r.citations ?? []).map((c) => c.permalink),
+    });
+    const decision = decide(this.deps.ledgerV2?.entries() ?? [], {
+      type: 'Confirm',
+      questionId,
+      actor,
+      actorType: 'human',
+      result: r,
+    });
+    if (decision.ok) this.emitEvents(decision.events ?? []);
+
+    this.confirmedQuestionIds.add(questionId);
+    return r;
+  }
+
   approve(questionId: string, actor: string, runId?: string): DraftResult {
     this.assertRun(runId);
     const r = this.mustFind(questionId);
@@ -62,6 +105,9 @@ export class ReviewSession {
     }
     if (!r.answerText) {
       throw new Error(`question ${questionId} has no draft to approve — route it to an SME instead`);
+    }
+    if (!this.confirmedQuestionIds.has(questionId)) {
+      throw new Error(`question ${questionId} must be confirmed by a human before it can be approved`);
     }
     this.deps.ledger.append({
       action: 'approve',
@@ -74,6 +120,7 @@ export class ReviewSession {
       type: 'Approve',
       questionId,
       actor,
+      actorType: 'human',
       result: r,
     });
     if (decision.ok) this.emitEvents(decision.events ?? []);
@@ -109,6 +156,7 @@ export class ReviewSession {
       type: 'Reject',
       questionId,
       actor,
+      actorType: 'human',
       result: r,
     });
     if (decision.ok) this.emitEvents(decision.events ?? []);
@@ -136,6 +184,7 @@ export class ReviewSession {
       type: 'Edit',
       questionId,
       actor,
+      actorType: 'human',
       newText,
       result: r,
     });
@@ -145,7 +194,12 @@ export class ReviewSession {
     return r;
   }
 
-  /** An SME answers a routed question directly; their answer is approved in one step. */
+  /**
+   * An SME answers a routed question directly. Their typed answer is treated as
+   * a human-confirmed draft; a *different* human must still approve it before
+   * it enters the reusable library. This preserves the two-human-gate policy
+   * for all approved answers.
+   */
   smeProvide(questionId: string, smeId: string, answerText: string, runId?: string): DraftResult {
     this.assertRun(runId);
     const r = this.mustFind(questionId);
@@ -156,11 +210,12 @@ export class ReviewSession {
       type: 'SmeProvide',
       questionId,
       actor: smeId,
+      actorType: 'human',
       answerText,
       result: r,
     });
     if (decision.ok) this.emitEvents(decision.events ?? []);
-    return this.approve(questionId, smeId, this.runId);
+    return this.confirm(questionId, smeId, this.runId);
   }
 
   recount(): PlanCounts {
@@ -184,6 +239,14 @@ export async function runQuestionnaire(
   );
 
   const evidence = await deps.planner.retrieve(parsed.questions, { strategy: 'per-question' });
+
+  // Feed every retrieved snippet into the evidence graph so stale-answer
+  // detection can observe contradictions as workspace knowledge evolves.
+  for (const entry of evidence.values()) {
+    for (const hit of entry.hits) {
+      deps.library.observeEvidence(hit.permalink, hit.channelId, hit.ts, hit.snippet);
+    }
+  }
 
   onProgress('Evidence retrieval complete. Drafting evidence-grounded answers…');
 

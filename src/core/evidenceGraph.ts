@@ -83,8 +83,43 @@ function trigramJaccard(a: string, b: string): number {
   return intersection / (ta.size + tb.size - intersection);
 }
 
+function normalizeForContradiction(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/^(no|yes),?\s+/i, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stemWord(w: string): string {
+  // Very light stemming: remove trailing 's' and common suffixes.
+  return w.replace(/(s|es|ing|ed)$/, '');
+}
+
+function wordTokens(text: string): Set<string> {
+  return new Set(
+    normalizeForContradiction(text)
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !['the', 'and', 'are', 'for', 'with', 'this', 'that', 'you', 'our'].includes(w))
+      .map(stemWord),
+  );
+}
+
+function tokenJaccard(a: string, b: string): number {
+  const ta = wordTokens(a);
+  const tb = wordTokens(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let intersection = 0;
+  for (const t of ta) if (tb.has(t)) intersection++;
+  return intersection / (ta.size + tb.size - intersection);
+}
+
 function looksContradictory(claimText: string, evidenceSnippet: string): boolean {
-  if (trigramJaccard(claimText, evidenceSnippet) < 0.35) return false;
+  // Strong topic overlap: either word-level (better for short claims) or
+  // trigram-level (better for longer paraphrases).
+  const topicOverlap = tokenJaccard(claimText, evidenceSnippet) >= 0.3 || trigramJaccard(claimText, evidenceSnippet) >= 0.2;
+  if (!topicOverlap) return false;
   const claimNeg = containsNegation(claimText);
   const evidenceNeg = containsNegation(evidenceSnippet);
   return claimNeg !== evidenceNeg;

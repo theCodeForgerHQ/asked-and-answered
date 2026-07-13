@@ -1,6 +1,7 @@
 import type { Citation } from './library.js';
 import type { RtsHit } from './planner.js';
 import type { Question } from './types.js';
+import type { ActorType } from './stateMachine.js';
 
 /**
  * Event-sourced domain events for the Asked & Answered lifecycle.
@@ -58,6 +59,7 @@ export interface AnswerApproved {
   answerText: string;
   citations: Citation[];
   actor: string;
+  actorType: 'human';
   ts: string;
 }
 
@@ -66,6 +68,7 @@ export interface AnswerEdited {
   answerId: number;
   newText: string;
   actor: string;
+  actorType: 'human';
   ts: string;
 }
 
@@ -74,6 +77,16 @@ export interface AnswerRejected {
   answerId?: number;
   questionId: string;
   actor: string;
+  actorType: 'human';
+  ts: string;
+}
+
+export interface AnswerConfirmed {
+  type: 'AnswerConfirmed';
+  answerId?: number;
+  questionId: string;
+  actor: string;
+  actorType: 'human';
   ts: string;
 }
 
@@ -84,6 +97,7 @@ export interface AnswerProposed {
   answerText: string;
   citations: Citation[];
   actor: 'agent';
+  actorType: 'agent';
   ts: string;
 }
 
@@ -91,6 +105,7 @@ export interface Exported {
   type: 'Exported';
   runId: string;
   actor: string;
+  actorType: ActorType;
   ts: string;
 }
 
@@ -103,5 +118,6 @@ export type DomainEvent =
   | AnswerApproved
   | AnswerEdited
   | AnswerRejected
+  | AnswerConfirmed
   | AnswerProposed
   | Exported;

@@ -11,6 +11,7 @@
  */
 
 import type { ApprovedAnswer } from './library.js';
+import calibrationArtifact from './calibration.json' with { type: 'json' };
 
 export interface CalibrationPair {
   query: string;
@@ -19,10 +20,32 @@ export interface CalibrationPair {
   same: boolean;
 }
 
+export interface CalibrationArtifact {
+  qHat: number;
+  alpha: number;
+  nCalibration: number;
+  nHoldout: number;
+  holdoutCoverage: number;
+  falsePositiveRate: number;
+  calibratedAt: string;
+  note?: string;
+}
+
 export class ConformalMatcher {
   private calibratedQuantile: number | null = null;
 
   constructor(private readonly alpha = 0.1) {}
+
+  /**
+   * Load a committed calibration artifact (e.g. from scripts/calibrateConformal.ts).
+   * Validates q_hat ∈ [0, 1] and α matches; disables the conformal gate on bad data.
+   */
+  loadArtifact(artifact: CalibrationArtifact): boolean {
+    if (artifact.alpha !== this.alpha) return false;
+    if (artifact.qHat < 0 || artifact.qHat > 1) return false;
+    this.calibratedQuantile = artifact.qHat;
+    return true;
+  }
 
   /**
    * Calibrate on labeled question pairs. Follows split-conformal prediction:

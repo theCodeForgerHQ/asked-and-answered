@@ -272,7 +272,14 @@ export class AnswerLibrary {
     return this.allAnswers().find((a) => a.id === id);
   }
 
-  private allAnswers(): ApprovedAnswer[] {
+  /** Re-index every approved answer already in the database into the evidence graph. */
+  rebuildGraph(): void {
+    for (const answer of this.allAnswers()) {
+      this.indexInGraph(answer);
+    }
+  }
+
+  allAnswers(): ApprovedAnswer[] {
     const rows = this.db.prepare('SELECT * FROM answers').all() as Array<{
       id: number;
       question_text: string;

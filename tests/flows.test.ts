@@ -64,11 +64,12 @@ describe('runQuestionnaire', () => {
     const run1 = await runQuestionnaire(parsed, 'U_REQ', d, () => {});
     expect(run1.results[0]?.state).toBe('grounded');
 
-    run1.approve('q1', 'U_SME');
+    run1.confirm('q1', 'U_SME');
+    run1.approve('q1', 'U_REVIEWER');
 
     const run2 = await runQuestionnaire(parsed, 'U_REQ2', d, () => {});
     expect(run2.results[0]?.state).toBe('verified');
-    expect(run2.results[0]?.approvedBy).toBe('U_SME');
+    expect(run2.results[0]?.approvedBy).toBe('U_REVIEWER');
   });
 });
 
@@ -82,13 +83,15 @@ describe('ReviewSession actions', () => {
     session = await runQuestionnaire(parsed, 'U_REQ', d, () => {});
   });
 
-  test('approve appends to the ledger and saves to the library', () => {
-    session.approve('q1', 'U_SME');
+  test('approve appends to the ledger and saves to the library after confirm', () => {
+    session.confirm('q1', 'U_SME');
+    session.approve('q1', 'U_REVIEWER');
 
     const entries = d.ledger.entries();
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.action).toBe('approve');
-    expect(entries[0]?.actor).toBe('U_SME');
+    expect(entries).toHaveLength(2);
+    expect(entries[0]?.action).toBe('confirm');
+    expect(entries[1]?.action).toBe('approve');
+    expect(entries[1]?.actor).toBe('U_REVIEWER');
     expect(d.library.searchAnswers('encrypt data at rest')).toHaveLength(1);
     expect(session.results[0]?.state).toBe('verified');
   });
@@ -102,24 +105,30 @@ describe('ReviewSession actions', () => {
     expect(d.library.searchAnswers('encrypt data at rest')).toHaveLength(0);
   });
 
-  test('edit replaces the answer text, logs an edit, and saves the edited version on approve', () => {
+  test('edit replaces the answer text, logs an edit, and saves the edited version on confirm+approve', () => {
     session.edit('q1', 'U_SME', 'Yes — AES-256; keys rotate every 90 days.');
-    session.approve('q1', 'U_SME');
+    session.confirm('q1', 'U_SME');
+    session.approve('q1', 'U_REVIEWER');
 
     const actions = d.ledger.entries().map((e) => e.action);
-    expect(actions).toEqual(['edit', 'approve']);
+    expect(actions).toEqual(['edit', 'confirm', 'approve']);
     expect(d.library.searchAnswers('encrypt')[0]?.answerText).toContain('90 days');
   });
 
-  test('smeProvide answers a needs_sme question with SME text and approves it in one step', async () => {
+  test('smeProvide answers a needs_sme question with SME text and confirms it for final approval', async () => {
     const parsed = parseText('Do you carry cyber liability insurance?');
     const s2 = await runQuestionnaire(parsed, 'U_REQ', d, () => {});
     expect(s2.results[0]?.state).toBe('needs_sme');
 
     s2.smeProvide('q1', 'U_SME', 'Yes, $5M coverage via Acme Insurance, renewed annually.');
 
+    expect(s2.results[0]?.state).toBe('grounded');
+    expect(s2.confirmedQuestionIds.has('q1')).toBe(true);
+    expect(d.ledger.entries().at(-1)?.action).toBe('confirm');
+    expect(d.library.searchAnswers('cyber liability insurance')).toHaveLength(0);
+
+    s2.approve('q1', 'U_REVIEWER');
     expect(s2.results[0]?.state).toBe('verified');
-    expect(d.ledger.entries().at(-1)?.action).toBe('approve');
     expect(d.library.searchAnswers('cyber liability insurance')).toHaveLength(1);
   });
 
@@ -140,14 +149,16 @@ describe('ReviewSession actions', () => {
   });
 
   test('acting with the correct runId succeeds', () => {
-    expect(() => session.approve('q1', 'U_SME', session.runId)).not.toThrow();
+    session.confirm('q1', 'U_SME', session.runId);
+    expect(() => session.approve('q1', 'U_REVIEWER', session.runId)).not.toThrow();
   });
 
   test('re-approving an already-verified answer is a no-op (no duplicate ledger/library rows)', () => {
-    session.approve('q1', 'U_SME');
-    session.approve('q1', 'U_SME');
-    session.approve('q1', 'U_SME');
-    expect(d.ledger.entries()).toHaveLength(1);
+    session.confirm('q1', 'U_SME');
+    session.approve('q1', 'U_REVIEWER');
+    session.approve('q1', 'U_REVIEWER');
+    session.approve('q1', 'U_REVIEWER');
+    expect(d.ledger.entries()).toHaveLength(2);
     expect(d.library.searchAnswers('encrypt data at rest')).toHaveLength(1);
   });
 });

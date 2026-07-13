@@ -8,7 +8,7 @@
   },
   "features": {
     "app_home": {
-      "home_tab_enabled": false,
+      "home_tab_enabled": true,
       "messages_tab_enabled": true,
       "messages_tab_read_only_enabled": false
     },
@@ -24,7 +24,30 @@
       ]
     }
   },
+  "functions": {
+    "check_asked_answered": {
+      "title": "Check Asked & Answered",
+      "description": "Run a fail-closed questionnaire check against the approved answer library and workspace evidence.",
+      "input_parameters": {
+        "questions": {
+          "type": "string",
+          "description": "Questionnaire text, one question per line",
+          "is_required": true
+        }
+      },
+      "output_parameters": {
+        "results": {
+          "type": "string",
+          "description": "JSON array of {question, status, answer, citations, approvedBy}",
+          "is_required": true
+        }
+      }
+    }
+  },
   "oauth_config": {
+    "redirect_urls": [
+      "https://asked-and-answered-app.onrender.com/oauth/user"
+    ],
     "scopes": {
       "bot": [
         "assistant:write",
@@ -37,10 +60,16 @@
         "files:read",
         "files:write",
         "search:read.public",
+        "canvases:write",
         "users:read",
         "im:history",
         "im:read",
         "im:write"
+      ],
+      "user": [
+        "search:read",
+        "channels:read",
+        "groups:read"
       ]
     }
   },

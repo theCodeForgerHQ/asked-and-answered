@@ -1,7 +1,7 @@
 import { createHash, createHmac } from 'node:crypto';
 import Database from 'better-sqlite3';
 
-export type LedgerAction = 'approve' | 'reject' | 'edit' | 'export' | 'degrade';
+export type LedgerAction = 'approve' | 'confirm' | 'reject' | 'edit' | 'export' | 'degrade';
 
 export interface AppendInput {
   action: LedgerAction;

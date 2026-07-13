@@ -1,20 +1,32 @@
 import bolt from '@slack/bolt';
 import { AnswerLibrary } from './core/library.js';
+import { ConformalMatcher } from './core/conformal.js';
+import { DEFAULT_CALIBRATION_PAIRS } from './core/calibrationData.js';
+import calibrationArtifact from './core/calibration.json' with { type: 'json' };
+import { EvidenceGraph } from './core/evidenceGraph.js';
 import { Ledger } from './core/ledger.js';
+import { LedgerV2 } from './core/ledgerV2.js';
 import { QueryPlanner, RateBudget } from './core/planner.js';
 import { parseCsv, parseText, parseXlsx } from './core/parse.js';
 import { exportXlsx } from './core/export.js';
 import { createDrafter } from './llm/index.js';
+import { invariantHealthCheck } from './core/invariant.js';
 import {
   answerCardBlocks,
   planSummaryText,
   reviewTableBlocks,
   smeRequestBlocks,
-  verifyResultBlocks,
 } from './slack/blocks.js';
+import { appHomeBlocks, gatherHomeStats } from './slack/appHome.js';
+import { reviewDataTableBlocks } from './slack/dataTable.js';
+import { buildCanvasDocument, canvasToMarkdown, canvasToApiSections } from './slack/canvasExport.js';
+import { registerWorkflowStep } from './slack/workflowStep.js';
+import { verifyPipelineCodeLevel } from '../scripts/verifyPipelineCodeLevel.js';
 import { runQuestionnaire, ReviewSession, type RunDeps } from './slack/flows.js';
 import { ActionTokenStore, SlackRtsClient } from './slack/rts.js';
 import { ChannelMembershipChecker } from './slack/visibility.js';
+import { InMemorySessionStore, SqliteSessionStore, type SessionStore } from './slack/sessionStore.js';
+import { InMemoryUserTokenStore, SqliteUserTokenStore, type UserTokenStore, buildUserOAuthUrl } from './slack/oauth.js';
 
 const { App } = bolt;
 
@@ -54,6 +66,15 @@ const app = new App({
       },
     },
     {
+      path: '/invariant',
+      method: ['GET'],
+      handler: async (_req, res) => {
+        const result = await invariantHealthCheck();
+        res.writeHead(result.status === 'pass' ? 200 : 500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      },
+    },
+    {
       path: '/',
       method: ['GET'],
       handler: (_req, res) => {
@@ -61,14 +82,120 @@ const app = new App({
         res.end('Asked & Answered');
       },
     },
+    {
+      path: '/oauth/user',
+      method: ['GET'],
+      handler: async (req, res) => {
+        // User OAuth callback for private-channel RTS scopes.
+        const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+        const code = url.searchParams.get('code');
+        const state = url.searchParams.get('state') ?? '';
+        const error = url.searchParams.get('error');
+        if (error) {
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          res.end(`OAuth error: ${error}`);
+          return;
+        }
+        if (!code) {
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          res.end('Missing OAuth code');
+          return;
+        }
+        try {
+          const clientId = process.env.SLACK_CLIENT_ID;
+          const clientSecret = process.env.SLACK_CLIENT_SECRET;
+          const redirectUri = process.env.AA_PUBLIC_URL
+            ? `${process.env.AA_PUBLIC_URL}/oauth/user`
+            : `http://localhost:${process.env.PORT ?? 3000}/oauth/user`;
+          if (!clientId || !clientSecret) {
+            res.writeHead(500, { 'Content-Type': 'text/plain' });
+            res.end('Server missing OAuth credentials');
+            return;
+          }
+          const tokenRes = await fetch('https://slack.com/api/oauth.v2.access', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code, redirect_uri: redirectUri }),
+          });
+          const tokenData = (await tokenRes.json()) as {
+            ok?: boolean;
+            error?: string;
+            authed_user?: { id?: string; access_token?: string; scope?: string };
+          };
+          if (!tokenData.ok) {
+            res.writeHead(400, { 'Content-Type': 'text/plain' });
+            res.end(`Slack OAuth error: ${tokenData.error ?? 'unknown'}`);
+            return;
+          }
+          const userId = tokenData.authed_user?.id;
+          const accessToken = tokenData.authed_user?.access_token;
+          const scopes = tokenData.authed_user?.scope?.split(',') ?? [];
+          if (!userId || !accessToken) {
+            res.writeHead(400, { 'Content-Type': 'text/plain' });
+            res.end('OAuth response missing user token');
+            return;
+          }
+          userTokenStore.saveUserToken(userId, accessToken, scopes);
+          res.writeHead(200, { 'Content-Type': 'text/plain' });
+          res.end('Private-channel search authorized. You can now return to Slack.');
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'text/plain' });
+          res.end(`OAuth callback failed: ${(err as Error).message}`);
+        }
+      },
+    },
   ],
 });
 
 const dbPath = process.env.AA_DB_PATH ?? 'asked-and-answered.db';
-const library = AnswerLibrary.atPath(dbPath);
+
+// V3 components: evidence graph + conformal matcher power the approved library.
+const graph = new EvidenceGraph();
+const matcher = new ConformalMatcher();
+const conformalLoaded = matcher.loadArtifact(calibrationArtifact);
+if (!conformalLoaded) {
+  console.warn('Conformal calibration artifact invalid; falling back to in-memory pairs.');
+  matcher.calibrate(DEFAULT_CALIBRATION_PAIRS);
+}
+const library = AnswerLibrary.atPath(dbPath, graph, matcher);
+library.rebuildGraph(); // re-index existing DB answers for stale-evidence detection
+
 const ledger = Ledger.atPath(dbPath.replace(/\.db$/, '-ledger.db'));
+const ledgerV2 = LedgerV2.atPath(dbPath.replace(/\.db$/, '-ledger-v2.db'));
 const tokens = new ActionTokenStore();
 const drafter = createDrafter();
+
+const sessionStore: SessionStore =
+  process.env.AA_SESSION_STORE === 'memory'
+    ? new InMemorySessionStore()
+    : SqliteSessionStore.atPath(dbPath.replace(/\.db$/, '-sessions.db'));
+
+const userTokenStore: UserTokenStore =
+  process.env.AA_SESSION_STORE === 'memory'
+    ? new InMemoryUserTokenStore()
+    : SqliteUserTokenStore.atPath(dbPath.replace(/\.db$/, '-user-tokens.db'));
+
+registerWorkflowStep({
+  app,
+  library,
+  ledger,
+  ledgerV2,
+  llm: drafter,
+  visibility: new ChannelMembershipChecker(async (channelId) => {
+    const members: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await app.client.conversations.members({ channel: channelId, limit: 200, ...(cursor ? { cursor } : {}) });
+      members.push(...(page.members ?? []));
+      cursor = page.response_metadata?.next_cursor || undefined;
+    } while (cursor);
+    return members;
+  }),
+  planner: new QueryPlanner(new SlackRtsClient((method, args) => app.client.apiCall(method, args), tokens, process.env.SLACK_BOT_USER_ID ?? 'U_WORKFLOW'), {
+    budget: new RateBudget({ maxPerWindow: 9, windowMs: 60_000 }),
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  }),
+});
 
 /**
  * Sessions keyed by runId (unique per questionnaire run), so a stale button
@@ -76,12 +203,17 @@ const drafter = createDrafter();
  * TTL-evicted to bound memory.
  */
 const SESSION_TTL_MS = 6 * 60 * 60 * 1000;
-const sessions = new Map<string, { session: ReviewSession; at: number }>();
 
 function putSession(session: ReviewSession): void {
-  const now = Date.now();
-  for (const [id, entry] of sessions) if (now - entry.at > SESSION_TTL_MS) sessions.delete(id);
-  sessions.set(session.runId, { session, at: now });
+  sessionStore.prune(SESSION_TTL_MS);
+  sessionStore.save({
+    runId: session.runId,
+    requesterId: session.requesterId,
+    results: session.results,
+    counts: session.recount(),
+    confirmedQuestionIds: Array.from(session.confirmedQuestionIds),
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 /** Parse a button value of the form `runId:questionId`. */
@@ -94,23 +226,29 @@ function parseValue(value: string | undefined): { runId: string; questionId: str
 
 /** Resolve the session a button belongs to (by its embedded runId). Expired
  *  sessions are evicted at lookup time so a stale button stops working after TTL. */
-function sessionForValue(value: string | undefined): { session: ReviewSession; questionId: string } | undefined {
+function sessionForValue(
+  value: string | undefined,
+  actorUserId: string,
+): { session: ReviewSession; questionId: string } | undefined {
   const parsed = parseValue(value);
   if (!parsed) return undefined;
-  const entry = sessions.get(parsed.runId);
-  if (!entry) return undefined;
-  if (Date.now() - entry.at > SESSION_TTL_MS) {
-    sessions.delete(parsed.runId);
+  const record = sessionStore.load(parsed.runId);
+  if (!record) return undefined;
+  if (Date.now() - new Date(record.updatedAt).getTime() > SESSION_TTL_MS) {
+    sessionStore.delete(parsed.runId);
     return undefined;
   }
-  return { session: entry.session, questionId: parsed.questionId };
+  const session = ReviewSession.fromState(record, depsForUser(actorUserId));
+  return { session, questionId: parsed.questionId };
 }
 
 function depsForUser(userId: string): RunDeps {
+  const userToken = userTokenStore.getUserToken(userId);
   const rts = new SlackRtsClient(
     (method, args) => app.client.apiCall(method, args),
     tokens,
     userId,
+    userToken,
   );
   const membership = new ChannelMembershipChecker(async (channelId) => {
     const members: string[] = [];
@@ -125,6 +263,7 @@ function depsForUser(userId: string): RunDeps {
   return {
     library,
     ledger,
+    ledgerV2,
     llm: drafter,
     visibility: membership,
     planner: new QueryPlanner(rts, {
@@ -142,15 +281,41 @@ const WELCOME =
 
 app.event('app_home_opened', async ({ event, client }) => {
   const tab = (event as { tab?: string }).tab;
-  if (tab !== 'messages') return;
-  // Greet only if the conversation is empty (best-effort; ignore failures).
-  try {
-    const history = await client.conversations.history({ channel: event.channel ?? '', limit: 1 });
-    if ((history.messages ?? []).length === 0) {
-      await client.chat.postMessage({ channel: event.channel ?? '', text: WELCOME });
+  const userId = (event as { user?: string }).user ?? '';
+
+  if (tab === 'home') {
+    const deps = depsForUser(userId);
+    const stats = await gatherHomeStats(library, ledgerV2, userId, deps.visibility);
+    const invariant = await invariantHealthCheck();
+    stats.invariantOk = invariant.status === 'pass';
+    const homeOpts: { invariantCheckUrl?: string } = {};
+    if (process.env.AA_PUBLIC_URL) {
+      homeOpts.invariantCheckUrl = `${process.env.AA_PUBLIC_URL}/invariant`;
     }
-  } catch {
-    /* greeting is cosmetic */
+    try {
+      await client.views.publish({
+        user_id: userId,
+        view: {
+          type: 'home',
+          blocks: appHomeBlocks(stats, homeOpts) as never,
+        },
+      });
+    } catch {
+      /* App Home render is cosmetic */
+    }
+    return;
+  }
+
+  if (tab === 'messages') {
+    // Greet only if the conversation is empty (best-effort; ignore failures).
+    try {
+      const history = await client.conversations.history({ channel: event.channel ?? '', limit: 1 });
+      if ((history.messages ?? []).length === 0) {
+        await client.chat.postMessage({ channel: event.channel ?? '', text: WELCOME });
+      }
+    } catch {
+      /* greeting is cosmetic */
+    }
   }
 });
 
@@ -201,8 +366,23 @@ app.message(async ({ message, client }) => {
 
   // `verify ledger` command surface (works in DM without a slash command).
   if ((msg.text ?? '').trim().toLowerCase() === 'verify ledger') {
-    const result = ledger.verify();
-    await say('Ledger verification', verifyResultBlocks(result) as unknown[]);
+    const v1 = ledger.verify();
+    const v2 = ledgerV2.verify();
+    const ok = v1.ok && v2.ok;
+    await say(
+      'Ledger verification',
+      [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: ok
+              ? `:white_check_mark: *Ledgers intact.* Legacy: ${v1.entriesChecked} entries. Event-sourced: ${v2.entriesChecked} entries.`
+              : `:rotating_light: *Ledger verification FAILED.* Legacy ok=${v1.ok} (seq ${v1.firstBadSeq ?? '-'}); event-sourced ok=${v2.ok} (seq ${v2.firstBadSeq ?? '-'}; ${v2.metadataMismatch ?? ''})`,
+          },
+        },
+      ] as unknown[],
+    );
     return;
   }
 
@@ -261,16 +441,18 @@ function target(body: unknown): { channel: string; thread: string } | undefined 
 app.action('open_answer_card', async ({ ack, body, client, action }) => {
   await ack();
   try {
-    const resolved = sessionForValue((action as { value?: string }).value);
+    const actorUserId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
+    const resolved = sessionForValue((action as { value?: string }).value, actorUserId);
     const t = target(body);
     if (!resolved || !t) return;
     const result = resolved.session.results.find((r) => r.questionId === resolved.questionId);
     if (!result) return;
+    const confirmed = resolved.session.confirmedQuestionIds.has(resolved.questionId);
     await client.chat.postMessage({
       channel: t.channel,
       thread_ts: t.thread,
       text: result.questionText,
-      blocks: answerCardBlocks(result, resolved.session.runId) as never,
+      blocks: answerCardBlocks(result, resolved.session.runId, confirmed) as never,
     });
   } catch (err) {
     console.error('open_answer_card failed', err);
@@ -280,7 +462,8 @@ app.action('open_answer_card', async ({ ack, body, client, action }) => {
 app.action('table_next_page', async ({ ack, body, client, action }) => {
   await ack();
   try {
-    const resolved = sessionForValue((action as { value?: string }).value);
+    const actorUserId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
+    const resolved = sessionForValue((action as { value?: string }).value, actorUserId);
     const page = Number(parseValue((action as { value?: string }).value)?.questionId ?? '0');
     const t = target(body);
     if (!resolved || !t || Number.isNaN(page)) return;
@@ -301,13 +484,14 @@ for (const [actionId, verb] of [
 ] as const) {
   app.action(actionId, async ({ ack, body, client, action }) => {
     await ack();
-    const resolved = sessionForValue((action as { value?: string }).value);
     const userId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
+    const resolved = sessionForValue((action as { value?: string }).value, userId);
     const t = target(body);
     if (!resolved || !t) return;
     try {
       if (verb === 'approve') resolved.session.approve(resolved.questionId, userId, resolved.session.runId);
       else resolved.session.reject(resolved.questionId, userId, resolved.session.runId);
+      putSession(resolved.session);
       const counts = resolved.session.recount();
       await client.chat.postMessage({
         channel: t.channel,
@@ -327,12 +511,36 @@ for (const [actionId, verb] of [
   });
 }
 
+app.action('confirm_answer', async ({ ack, body, client, action }) => {
+  await ack();
+  const userId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
+  const resolved = sessionForValue((action as { value?: string }).value, userId);
+  const t = target(body);
+  if (!resolved || !t) return;
+  try {
+    resolved.session.confirm(resolved.questionId, userId, resolved.session.runId);
+    putSession(resolved.session);
+    const counts = resolved.session.recount();
+    await client.chat.postMessage({
+      channel: t.channel,
+      thread_ts: t.thread,
+      text: `:memo: Confirmed by <@${userId}> — this answer is now ready for final approval by a different human.\n${planSummaryText(counts)}`,
+    });
+  } catch (err) {
+    await client.chat.postMessage({
+      channel: t.channel,
+      thread_ts: t.thread,
+      text: (err as Error).message,
+    });
+  }
+});
+
 app.action('route_to_sme', async ({ ack, body, client, action }) => {
   await ack();
   try {
     const value = (action as { value?: string }).value;
-    const resolved = sessionForValue(value);
     const requester = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
+    const resolved = sessionForValue(value, requester);
     const t = target(body);
     if (!resolved || !t) return;
     const result = resolved.session.results.find((r) => r.questionId === resolved.questionId);
@@ -372,9 +580,10 @@ app.action('sme_selected', async ({ ack, body, client, action }) => {
       channel?: { id?: string };
       message?: { thread_ts?: string; ts?: string; blocks?: Array<{ elements?: Array<{ text?: string }> }> };
     };
+    const actorUserId = b.user?.id ?? 'unknown';
     const contextText = b.message?.blocks?.find((bl) => bl.elements)?.elements?.[0]?.text ?? '';
     const ref = /ref:(\S+)/.exec(contextText)?.[1];
-    const resolved = sessionForValue(ref);
+    const resolved = sessionForValue(ref, actorUserId);
     if (!smeId || !resolved) return;
     const result = resolved.session.results.find((r) => r.questionId === resolved.questionId);
     if (!result) return;
@@ -419,7 +628,8 @@ app.action('edit_answer', async ({ ack, body, client, action }) => {
   await ack();
   try {
     const value = (action as { value?: string }).value;
-    const resolved = sessionForValue(value);
+    const actorUserId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
+    const resolved = sessionForValue(value, actorUserId);
     if (!resolved) return;
     const result = resolved.session.results.find((r) => r.questionId === resolved.questionId);
     await openAnswerModal(client, (body as { trigger_id: string }).trigger_id, 'edit_answer_modal', value ?? '', result?.answerText ?? '');
@@ -431,7 +641,7 @@ app.action('edit_answer', async ({ ack, body, client, action }) => {
 app.view('sme_answer_modal', async ({ ack, body, view }) => {
   await ack();
   try {
-    const resolved = sessionForValue(view.private_metadata);
+    const resolved = sessionForValue(view.private_metadata, body.user.id);
     const answer = view.state.values.answer_block?.answer_input?.value ?? '';
     if (!resolved || !answer.trim()) return;
     resolved.session.smeProvide(resolved.questionId, body.user.id, answer, resolved.session.runId);
@@ -443,7 +653,7 @@ app.view('sme_answer_modal', async ({ ack, body, view }) => {
 app.view('edit_answer_modal', async ({ ack, body, view }) => {
   await ack();
   try {
-    const resolved = sessionForValue(view.private_metadata);
+    const resolved = sessionForValue(view.private_metadata, body.user.id);
     const answer = view.state.values.answer_block?.answer_input?.value ?? '';
     if (!resolved || !answer.trim()) return;
     resolved.session.edit(resolved.questionId, body.user.id, answer, resolved.session.runId);
@@ -457,7 +667,8 @@ app.action('export_xlsx', async ({ ack, body, client, action }) => {
   const t = target(body);
   try {
     // export button value is `runId:` (no question); fall back to any-in-thread not needed.
-    const resolved = sessionForValue((action as { value?: string }).value);
+    const actorUserId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
+    const resolved = sessionForValue((action as { value?: string }).value, actorUserId);
     if (!resolved || !t) return;
     const buf = await exportXlsx(resolved.session.results);
     await client.files.uploadV2({
@@ -469,6 +680,217 @@ app.action('export_xlsx', async ({ ack, body, client, action }) => {
     });
   } catch (err) {
     if (t) await client.chat.postMessage({ channel: t.channel, thread_ts: t.thread, text: `Export failed: ${(err as Error).message}` });
+  }
+});
+
+app.action('export_canvas', async ({ ack, body, client, action }) => {
+  await ack();
+  const t = target(body);
+  try {
+    const actorUserId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
+    const resolved = sessionForValue((action as { value?: string }).value, actorUserId);
+    if (!resolved || !t) return;
+    const doc = buildCanvasDocument(resolved.session.results, {
+      runId: resolved.session.runId,
+      requesterId: resolved.session.requesterId,
+      title: 'Questionnaire — Asked & Answered',
+    });
+
+    // Try the native Canvas API first; fall back to Markdown file upload if the
+    // bot token lacks canvases:write or the workspace does not support it.
+    try {
+      const canvas = await client.canvases.create({
+        title: doc.title,
+        document_content: { type: 'canvas', sections: canvasToApiSections(doc) } as never,
+      });
+      if (canvas.canvas_id) {
+        const url = `https://app.slack.com/client/${process.env.SLACK_TEAM_ID ?? ''}/canvases/${canvas.canvas_id}`;
+        await client.chat.postMessage({
+          channel: t.channel,
+          thread_ts: t.thread,
+          text: `:page_with_curl: Canvas exported: <${url}|Questionnaire — Asked & Answered>`,
+        });
+        return;
+      }
+    } catch {
+      /* fall through to Markdown fallback */
+    }
+
+    const md = canvasToMarkdown(doc);
+    const buf = Buffer.from(md, 'utf8');
+    await client.files.uploadV2({
+      channel_id: t.channel,
+      thread_ts: t.thread,
+      filename: 'questionnaire-asked-and-answered.md',
+      file: buf,
+      initial_comment: 'Canvas export (Markdown fallback) — every answer cited and approval-logged.',
+    });
+  } catch (err) {
+    if (t) await client.chat.postMessage({ channel: t.channel, thread_ts: t.thread, text: `Canvas export failed: ${(err as Error).message}` });
+  }
+});
+
+app.action('apphome_run_questionnaire', async ({ ack, body, client }) => {
+  await ack();
+  const userId = (body as { user?: { id?: string } }).user?.id;
+  if (!userId) return;
+  try {
+    const dm = await client.conversations.open({ users: userId });
+    if (dm.channel?.id) {
+      await client.chat.postMessage({ channel: dm.channel.id, text: WELCOME });
+    }
+  } catch (err) {
+    console.error('apphome_run_questionnaire failed', err);
+  }
+});
+
+app.action('apphome_verify_ledger', async ({ ack, body, client }) => {
+  await ack();
+  const userId = (body as { user?: { id?: string } }).user?.id;
+  if (!userId) return;
+  const v1 = ledger.verify();
+  const v2 = ledgerV2.verify();
+  const ok = v1.ok && v2.ok;
+  try {
+    await client.views.publish({
+      user_id: userId,
+      view: {
+        type: 'home',
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: ok
+                ? `:white_check_mark: *Ledgers intact.* Legacy: ${v1.entriesChecked} entries. Event-sourced: ${v2.entriesChecked} entries.`
+                : `:rotating_light: *Ledger verification FAILED.* Legacy ok=${v1.ok} (seq ${v1.firstBadSeq ?? '-'}); event-sourced ok=${v2.ok} (seq ${v2.firstBadSeq ?? '-'}; ${v2.metadataMismatch ?? ''})`,
+            },
+          },
+          {
+            type: 'actions',
+            elements: [
+              {
+                type: 'button',
+                action_id: 'apphome_return_home',
+                text: { type: 'plain_text', text: 'Back to dashboard' },
+              },
+            ],
+          },
+        ] as never,
+      },
+    });
+  } catch (err) {
+    console.error('apphome_verify_ledger failed', err);
+  }
+});
+
+app.action('apphome_check_invariant', async ({ ack, body, client }) => {
+  await ack();
+  const userId = (body as { user?: { id?: string } }).user?.id;
+  if (!userId) return;
+  const result = await invariantHealthCheck();
+  try {
+    await client.views.publish({
+      user_id: userId,
+      view: {
+        type: 'home',
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text:
+                result.status === 'pass'
+                  ? `:white_check_mark: *Permission invariant holds.*\n> Answer text is returned to a requester only if that requester can currently see every citation backing the answer.`
+                  : `:rotating_light: *Permission invariant FAILED.*\n> Answer text is returned to a requester only if that requester can currently see every citation backing the answer.`,
+            },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `Z3 proof: \`scripts/verifyInvariantZ3.ts\` — the negation of the invariant is unsatisfiable under the safety model.`,
+            },
+          },
+          {
+            type: 'actions',
+            elements: [
+              {
+                type: 'button',
+                action_id: 'apphome_return_home',
+                text: { type: 'plain_text', text: 'Back to dashboard' },
+              },
+            ],
+          },
+        ] as never,
+      },
+    });
+  } catch (err) {
+    console.error('apphome_check_invariant failed', err);
+  }
+});
+
+app.action('run_z3_verify', async ({ ack, body, client }) => {
+  await ack();
+  const userId = (body as { user?: { id?: string } }).user?.id;
+  if (!userId) return;
+  const result = await verifyPipelineCodeLevel();
+  try {
+    await client.views.publish({
+      user_id: userId,
+      view: {
+        type: 'home',
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text:
+                result.proved
+                  ? `:white_check_mark: *Code-level invariant proof holds.*\nZ3 returned \`${result.status}\`.\n> ${result.detail}`
+                  : `:rotating_light: *Code-level invariant proof FAILED.*\n> ${result.detail}`,
+            },
+          },
+          {
+            type: 'actions',
+            elements: [
+              {
+                type: 'button',
+                action_id: 'apphome_return_home',
+                text: { type: 'plain_text', text: 'Back to dashboard' },
+              },
+            ],
+          },
+        ] as never,
+      },
+    });
+  } catch (err) {
+    console.error('run_z3_verify failed', err);
+  }
+});
+
+app.action('apphome_return_home', async ({ ack, body, client }) => {
+  await ack();
+  const userId = (body as { user?: { id?: string } }).user?.id;
+  if (!userId) return;
+  const deps = depsForUser(userId);
+  const stats = await gatherHomeStats(library, ledgerV2, userId, deps.visibility);
+  const invariant = await invariantHealthCheck();
+  stats.invariantOk = invariant.status === 'pass';
+  const homeOpts: { invariantCheckUrl?: string } = {};
+  if (process.env.AA_PUBLIC_URL) {
+    homeOpts.invariantCheckUrl = `${process.env.AA_PUBLIC_URL}/invariant`;
+  }
+  try {
+    await client.views.publish({
+      user_id: userId,
+      view: {
+        type: 'home',
+        blocks: appHomeBlocks(stats, homeOpts) as never,
+      },
+    });
+  } catch (err) {
+    console.error('apphome_return_home failed', err);
   }
 });
 
