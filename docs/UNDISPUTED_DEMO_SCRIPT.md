@@ -33,7 +33,7 @@ Where is production data hosted?
 **DO:** Start recording on the app's **Messages** tab. The welcome message is visible ("I turn questionnaires into evidence-cited answers from this workspace").
 
 **SAY:**
-> "This is Asked & Answered — a Slack agent that turns your team's own history into completed security questionnaires. Every deal ships one of these, fifty to three hundred rows, and it always lands on the same one or two experts. But here's the one idea that makes this different: instead of asking an AI to answer and then trying to catch its mistakes, this agent lets code decide what's allowed to be returned — and the most important thing it does is refuse to guess."
+> "Every AI answers first and hopes it's right. This one refuses to. On a security questionnaire it won't write a single word unless the proof is already sitting in your Slack — and it can prove it never leaks an answer across permission boundaries. It's called Asked & Answered, and it turns your team's own history into the finished questionnaires that stall six-figure deals for days on one overloaded security lead. The model only ever proposes; deterministic code decides what's allowed out — and its default answer is no."
 
 ---
 
@@ -57,7 +57,7 @@ Where is production data hosted?
 **DO:** Click **Review** on **"Do you carry cyber liability insurance?"**. The card opens with **no draft** and the line *"Asked & Answered would rather ask a human than invent a compliance answer."* Pause here for a couple of seconds. Let it sit.
 
 **SAY:** *(after a short pause)*
-> "This is the moment that matters. The evidence for this one lives in a private channel I'm not a member of. Almost any other agent would still write something plausible — and on a security questionnaire, a confident wrong answer isn't a typo, it's a false statement in an attestation. This one stops, and routes it to a human instead. That refusal isn't a failure. It's the whole product."
+> "This is the moment that matters. The evidence for this one lives in a private channel I'm not a member of. And remember — a customer signs a contract on this answer; an auditor reads it. So a confident wrong answer here isn't a typo, it's a false statement your company is now on the hook for. Almost any other agent would still write something plausible. This one stops, and asks a human instead. That refusal isn't a failure. It's the whole product."
 
 ---
 
@@ -89,7 +89,7 @@ Where is production data hosted?
 **DO:** Paste the same four questions again and send. The encryption row now returns **Verified** instantly, crediting the approver, with the note *"re-checked against your permissions."*
 
 **SAY:**
-> "Now watch it compound. The answer we just approved comes back on the next questionnaire as Verified — instantly — and notice it's re-checked against my permissions before it's reused. So questionnaire two starts mostly done, and every approval becomes a permanent, permission-aware asset. The impact isn't flat — it grows with every deal."
+> "Now watch it compound. The answer we just approved comes back on the next questionnaire as Verified — instantly — and notice it's re-checked against my permissions before it's reused. On our seeded benchmark that's a simulated thirty-seven expert-hours, roughly five thousand dollars, saved for every hundred questions. And because every approval becomes a permanent, permission-aware asset, deal two starts mostly done — the savings grow with every deal you close."
 
 ---
 
@@ -97,7 +97,7 @@ Where is production data hosted?
 **DO:** Click the app's **Home** tab, then click the **Check invariant** quick action (or open `https://asked-and-answered-app.onrender.com/invariant` in a browser tab and show the `"status":"pass"` JSON).
 
 **SAY:**
-> "Underneath all of this is one rule: no answer text ever reaches someone who can't see all of its evidence. We enforce it in reuse, in fresh drafts, and in our MCP server — and it's not just tested, it's exposed as a live health check, and formally proved with Z3. That's the one thing a compliance tool cannot get wrong, and we can prove we don't."
+> "Underneath all of this is one rule: no answer text ever reaches someone who can't see all of its evidence. We enforce it in reuse, in fresh drafts, and in our MCP server. And we didn't just test it — we had a proof engine, Z3, check every possible path and confirm not one of them can leak. You don't have to take my word for it: that proof runs as a live health check you can hit right now. That's the one thing a compliance tool cannot get wrong — and we can prove we don't."
 
 ---
 
