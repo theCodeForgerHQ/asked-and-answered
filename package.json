@@ -22,14 +22,13 @@
     "@slack/bolt": "^4.4.0",
     "better-sqlite3": "^12.2.0",
     "exceljs": "^4.4.0",
-    "openai": "^6.46.0",
+    "tsx": "^4.20.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.0.0",
     "fast-check": "^4.2.0",
-    "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
   }

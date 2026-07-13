@@ -1,39 +1,71 @@
-import { AzureOpenAI, OpenAI } from 'openai';
 import type { DraftingLlm, LlmDraft } from '../core/pipeline.js';
 import type { RtsHit } from '../core/planner.js';
 import type { Question } from '../core/types.js';
 import { buildDraftPrompt, parseDraftReply } from './prompt.js';
 
-/** OpenAI/Azure OpenAI drafter. Provider-agnostic hardening lives in prompt.ts. */
+interface ChatCompletionResponse {
+  choices?: Array<{
+    message?: {
+      content?: string | null;
+    };
+  }>;
+  error?: { message: string };
+}
+
+/**
+ * OpenAI/Azure OpenAI drafter using raw fetch.
+ *
+ * Avoids the `openai` npm package because the version served by this registry
+ * (6.46.0) does not match known-good releases and is treated as untrusted.
+ */
 export class OpenAiDrafter implements DraftingLlm {
-  private readonly client: OpenAI | AzureOpenAI;
+  private readonly url: string;
+  private readonly headers: Record<string, string>;
   private readonly model: string;
 
   constructor() {
     const provider = process.env.LLM_PROVIDER ?? 'openai';
 
     if (provider === 'azure') {
-      const endpoint = required('AZURE_OPENAI_ENDPOINT');
-      const apiKey = required('AZURE_OPENAI_API_KEY');
+      const endpoint = required('AZURE_OPENAI_ENDPOINT').replace(/\/$/, '');
       const deployment = required('AZURE_OPENAI_DEPLOYMENT');
       const apiVersion = process.env.AZURE_OPENAI_API_VERSION ?? '2024-02-01';
-      this.client = new AzureOpenAI({ endpoint, apiKey, deployment, apiVersion });
+      this.url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+      this.headers = {
+        'api-key': required('AZURE_OPENAI_API_KEY'),
+        'Content-Type': 'application/json',
+      };
       this.model = process.env.AZURE_OPENAI_MODEL ?? deployment;
     } else {
-      const apiKey = required('OPENAI_API_KEY');
-      const baseURL = process.env.OPENAI_BASE_URL;
-      this.client = baseURL ? new OpenAI({ apiKey, baseURL }) : new OpenAI({ apiKey });
+      const baseURL = (process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/$/, '');
+      this.url = `${baseURL}/chat/completions`;
+      this.headers = {
+        Authorization: `Bearer ${required('OPENAI_API_KEY')}`,
+        'Content-Type': 'application/json',
+      };
       this.model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
     }
   }
 
   async draft(question: Question, hits: RtsHit[]): Promise<LlmDraft> {
-    const message = await this.client.chat.completions.create({
+    const body = {
       model: this.model,
       max_tokens: 500,
       messages: [{ role: 'user', content: buildDraftPrompt(question, hits) }],
+    };
+
+    const res = await fetch(this.url, {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify(body),
     });
-    const text = message.choices[0]?.message.content ?? '';
+
+    const data = (await res.json()) as ChatCompletionResponse;
+    if (!res.ok || data.error) {
+      throw new Error(`OpenAI request failed: ${res.status} ${data.error?.message ?? ''}`);
+    }
+
+    const text = data.choices?.[0]?.message?.content ?? '';
     return parseDraftReply(text);
   }
 }
