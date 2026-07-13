@@ -29,6 +29,8 @@
 
 ## Development
 
+[![CI](https://github.com/theCodeForgerHQ/asked-and-answered/actions/workflows/ci.yml/badge.svg)](https://github.com/theCodeForgerHQ/asked-and-answered/actions/workflows/ci.yml)
+
 ```bash
 npm install
 npm test          # 91 hermetic tests — no network, no Slack

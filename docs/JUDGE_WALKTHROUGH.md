@@ -58,4 +58,4 @@ unconfigured, it redacts every evidence-backed answer; disclosure is opt-in.
 - Rate-aware retrieval: `src/core/planner.ts` (`QueryPlanner`, `RateBudget`).
 - Tamper-evident ledger: `src/core/ledger.ts`.
 - Eval numbers: `docs/EVALS.md` (reproduce with `npx tsx evals/run.ts`).
-- 85 hermetic tests: `npm test`. Full offline loop: `npm run smoke`.
+- 91 hermetic tests: `npm test`. Full offline loop: `npm run smoke`.

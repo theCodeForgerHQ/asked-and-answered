@@ -44,6 +44,24 @@ const app = new App({
   socketMode: process.env.SLACK_APP_TOKEN ? true : false,
   ...(process.env.SLACK_APP_TOKEN ? { appToken: process.env.SLACK_APP_TOKEN } : {}),
   port: Number(process.env.PORT ?? 3000),
+  customRoutes: [
+    {
+      path: '/health',
+      method: ['GET'],
+      handler: (_req, res) => {
+        res.writeHead(200);
+        res.end('ok');
+      },
+    },
+    {
+      path: '/',
+      method: ['GET'],
+      handler: (_req, res) => {
+        res.writeHead(200);
+        res.end('Asked & Answered');
+      },
+    },
+  ],
 });
 
 const dbPath = process.env.AA_DB_PATH ?? 'asked-and-answered.db';
@@ -136,9 +154,21 @@ app.event('app_home_opened', async ({ event, client }) => {
   }
 });
 
-app.event('app_context_changed', async ({ body }) => {
+app.event('assistant_thread_context_changed', async ({ body }) => {
   // Entity context (what the user is viewing) — recorded for future scoping.
   void body;
+});
+
+app.event('assistant_thread_started', async ({ event, client }) => {
+  // Greet the user when they open a new assistant thread.
+  try {
+    const channelId = (event as { channel_id?: string }).channel_id;
+    if (channelId) {
+      await client.chat.postMessage({ channel: channelId, text: WELCOME });
+    }
+  } catch {
+    /* greeting is cosmetic */
+  }
 });
 
 app.message(async ({ message, client }) => {
@@ -209,10 +239,10 @@ app.message(async ({ message, client }) => {
     return;
   }
 
-  await say(`:hourglass_flowing_sand: Working on ${parsed.questions.length} questions — searching workspace evidence…`);
-
   try {
-    const session = await runQuestionnaire(parsed, msg.user, depsForUser(msg.user), () => {});
+    const session = await runQuestionnaire(parsed, msg.user, depsForUser(msg.user), (progress) => {
+      void say(progress);
+    });
     putSession(session);
     await say(planSummaryText(session.counts));
     await say('Review', reviewTableBlocks(session.results, { page: 0, runId: session.runId }) as unknown[]);
@@ -475,15 +505,6 @@ async function openAnswerModal(
   });
 }
 
-// Health endpoint for the deploy platform (HTTP mode only; Bolt's default
-// receiver exposes a raw Node server we can hang a route on).
-if (!process.env.SLACK_APP_TOKEN) {
-  const receiver = (app as unknown as { receiver?: { router?: { get?: (path: string, handler: (req: unknown, res: { writeHead: (n: number) => void; end: (s: string) => void }) => void) => void } } }).receiver;
-  receiver?.router?.get?.('/health', (_req, res) => {
-    res.writeHead(200);
-    res.end('ok');
-  });
-}
 
 const port = Number(process.env.PORT ?? 3000);
 await app.start(port);

@@ -33,7 +33,7 @@ We ship `asked-answered-mcp`, a read-only MCP server that exposes the approved-a
 The evidence already lives in Slack. The experts already live in Slack. The approval already happens in Slack. Tools like Conveyor, Loopio, and Vanta bolt a separate knowledge base onto the side and make you maintain it. We make the workspace itself the answer library — zero-copy, citation-first, permission-aware.
 
 ## How we built it
-TypeScript + Bolt. A small, sharp core: a rate-aware RTS **Query Planner**; a fail-closed three-state **drafting pipeline** with a citation-injection guard; a permission-revalidating **answer library**; a hash-chained **approval ledger** with live `verify`; xlsx export. The agent surface uses agent_view, streamed plans, and a Block Kit review table with per-row cards. 85 hermetic tests, CI, and an offline smoke test of the whole loop.
+TypeScript + Bolt. A small, sharp core: a rate-aware RTS **Query Planner**; a fail-closed three-state **drafting pipeline** with a citation-injection guard; a permission-revalidating **answer library**; a hash-chained **approval ledger** with live `verify`; xlsx export. The agent surface uses agent_view, streamed plans, and a Block Kit review table with per-row cards. 91 hermetic tests, CI, and an offline smoke test of the whole loop.
 
 ## The engineering we're proud of — a permission invariant, machine-checked
 > **No answer text ever flows to a requester who cannot see all of its evidence.**

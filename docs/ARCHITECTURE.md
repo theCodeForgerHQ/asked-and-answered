@@ -90,7 +90,7 @@ counts as "not visible."
 
 ## Testing
 
-- `npm test` — 85 hermetic tests (no network, no Slack), incl. a 200-run
+- `npm test` — 91 hermetic tests (no network, no Slack), incl. a 200-run
   fast-check property suite on the invariant.
 - `npm run smoke` — the full loop offline: parse → plan → draft → review →
   compounding reuse → tamper detection → export.
