@@ -97,10 +97,10 @@ export class SqliteUserTokenStore implements UserTokenStore {
   }
 
   hasUserTokenWithScope(scope: string): boolean {
-    const row = this.db
-      .prepare("SELECT 1 as found FROM user_tokens WHERE scopes LIKE '%' || ? || '%' LIMIT 1")
-      .get(scope) as { found: number } | undefined;
-    return row?.found === 1;
+    // Exact-match against the comma-joined scope list; a bare LIKE would let
+    // `search:read` match `search:read.public` and misreport the capability.
+    const rows = this.db.prepare('SELECT scopes FROM user_tokens').all() as Array<{ scopes: string }>;
+    return rows.some((row) => row.scopes.split(',').includes(scope));
   }
 
   private encrypt(plain: string): string {

@@ -1,5 +1,6 @@
 import type { AnswerLibrary, ApprovedAnswer } from './library.js';
 import type { Edge, EvidenceGraph, EvidenceNode } from './evidenceGraph.js';
+import type { AlertLog } from './alertLog.js';
 
 export interface StaleAlertContradiction {
   /** The claim text extracted from the approved answer. */
@@ -33,6 +34,8 @@ export interface WatcherOptions {
   onStale?: (alert: StaleAlert) => void | Promise<void>;
   /** Injectable clock; defaults to `Date.now`. */
   now?: () => number;
+  /** Durable dedup across restarts; without it every reboot re-alerts. */
+  alertLog?: AlertLog;
 }
 
 /**
@@ -96,11 +99,12 @@ export class Watcher {
         contradictions,
         supersessions,
       };
-      const isNew = !this.pending.has(answer.id);
+      const isNew = !this.pending.has(answer.id) && !this.opts.alertLog?.has(answer.id);
       this.pending.set(answer.id, alert);
 
       const cb = this.opts.onStale;
       if (cb && isNew) {
+        this.opts.alertLog?.markAlerted(answer.id);
         try {
           const result = cb(alert);
           if (result && typeof result.then === 'function') {

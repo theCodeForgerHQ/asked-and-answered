@@ -194,10 +194,10 @@ export class AnswerLibrary {
     const id = `evidence:${permalink}`;
     const existing = this.graph.getNode(id);
     if (existing?.kind === 'evidence') {
-      // Re-observing the same permalink updates the snippet in-place for
-      // contradiction detection without mutating the node identity.
-      (existing as { snippet: string }).snippet = snippet;
-      (existing as { observedAt: string }).observedAt = observedAt;
+      // Re-observing the same permalink updates the snippet and re-runs
+      // contradiction/supersession detection — citations are first indexed
+      // with an empty snippet at approval time and only get real text here.
+      this.graph.updateEvidenceSnippet(id, snippet, observedAt);
     } else {
       this.graph.addEvidence({ id, kind: 'evidence', permalink, channelId, ts, snippet, observedAt });
     }

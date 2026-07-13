@@ -102,3 +102,28 @@ export function buildMcpServerV2(library: AnswerLibrary, opts: McpServerV2Option
 
   return server;
 }
+
+// Entrypoint: `npm run mcp:v2` serves the library plus the human-gated
+// propose_answer write path over stdio. Same trust model as server.ts;
+// writes additionally require MCP_WRITES_ENABLED=1.
+const isMain = process.argv[1]?.endsWith('mcp/serverV2.ts') || process.argv[1]?.endsWith('mcp/serverV2.js');
+if (isMain) {
+  const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
+  const { AnswerLibrary } = await import('../core/library.js');
+  const { LedgerV2 } = await import('../core/ledgerV2.js');
+  const dbPath = process.env.AA_DB_PATH ?? 'asked-and-answered.db';
+  const trustLocal = process.env.AA_MCP_TRUST_LOCAL === '1';
+  const server = buildMcpServerV2(AnswerLibrary.atPath(dbPath), {
+    identity: process.env.AA_MCP_IDENTITY ?? 'local-operator',
+    visibility: { canSee: async () => trustLocal },
+    ledgerV2: LedgerV2.atPath(dbPath.replace(/\.db$/, '-ledger-v2.db')),
+    writesEnabled: process.env.MCP_WRITES_ENABLED === '1',
+  });
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error(
+    `asked-answered-mcp-v2 serving ${dbPath} over stdio — ` +
+      (trustLocal ? 'LOCAL TRUST (all answers disclosed)' : 'fail-closed (evidence-backed answers redacted)') +
+      (process.env.MCP_WRITES_ENABLED === '1' ? ' · agent proposals ENABLED' : ' · agent proposals disabled'),
+  );
+}

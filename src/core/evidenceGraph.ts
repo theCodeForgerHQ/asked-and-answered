@@ -138,6 +138,9 @@ export class EvidenceGraph {
     if (!this.nodes.has(from)) throw new Error(`unknown node ${from}`);
     if (!this.nodes.has(to)) throw new Error(`unknown node ${to}`);
     const list = this.edges.get(from) ?? [];
+    // Idempotent: re-observing the same relationship must not duplicate edges
+    // (re-scans and snippet updates would otherwise multiply contradictions).
+    if (list.some((e) => e.to === to && e.kind === kind)) return;
     list.push({ from, to, kind });
     this.edges.set(from, list);
   }
@@ -177,12 +180,50 @@ export class EvidenceGraph {
     return `${evidenceCount}:${claimCount}:${edgeCount}`;
   }
 
-  /** Add an evidence node and auto-detect contradictions against existing claims. */
+  /** Add an evidence node and auto-detect contradictions against existing
+   *  claims plus supersessions of older same-topic evidence. */
   addEvidence(node: EvidenceNode): void {
     this.addNode(node);
+    this.detectContradictions(node);
+    this.detectSupersessions(node);
+  }
+
+  /** Update the snippet of an already-observed evidence node and re-run
+   *  detection. Without the re-scan, citations first indexed with an empty
+   *  snippet (at approval time) could never trigger contradictions. */
+  updateEvidenceSnippet(id: string, snippet: string, observedAt: string): void {
+    const node = this.nodes.get(id);
+    if (node?.kind !== 'evidence') return;
+    node.snippet = snippet;
+    node.observedAt = observedAt;
+    this.detectContradictions(node);
+    this.detectSupersessions(node);
+  }
+
+  private detectContradictions(node: EvidenceNode): void {
+    if (!node.snippet) return;
     for (const n of this.nodes.values()) {
       if (n.kind === 'claim' && looksContradictory(n.text, node.snippet)) {
         this.link(node.id, n.id, 'CONTRADICTS');
+      }
+    }
+  }
+
+  /** Newer evidence in the same channel on the same topic supersedes older
+   *  evidence. Conservative: requires strong token overlap and distinct text,
+   *  so unrelated chatter never links. */
+  private detectSupersessions(node: EvidenceNode): void {
+    if (!node.snippet) return;
+    for (const n of this.nodes.values()) {
+      if (n.kind !== 'evidence' || n.id === node.id || !n.snippet) continue;
+      if (n.channelId !== node.channelId) continue;
+      const same = normalizeForContradiction(n.snippet) === normalizeForContradiction(node.snippet);
+      if (same) continue;
+      if (tokenJaccard(n.snippet, node.snippet) < 0.5) continue;
+      if (Number(node.ts) > Number(n.ts)) {
+        this.link(node.id, n.id, 'SUPERSEDES');
+      } else if (Number(n.ts) > Number(node.ts)) {
+        this.link(n.id, node.id, 'SUPERSEDES');
       }
     }
   }
