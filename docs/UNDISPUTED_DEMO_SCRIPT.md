@@ -4,6 +4,8 @@
 
 The spoken words are written to win the two pillars the judges dock us on — **Potential Impact** and **Quality of the Idea** (see `docs/FINAL_JUDGE_COMPARISON.md`). Say them close to verbatim; the phrasing is doing the work.
 
+**The repeatable handle:** the whole narration hangs on one rule the judge should be able to say back — **"No proof, no answer."** It's stated at the open (twice), at the refusal, and at the close. It's the answer to the strongest rival's sticky two-word handle ("contradiction firewall"): where an ambient agent *warns you* about inconsistency and *trusts the model's read* of the evidence, this one *refuses to answer without proof* and *proves it can't leak*. The narration deliberately frames "warning / best judgment" as a **lower tier** than "proof / verification" — never naming a competitor, just occupying the higher ground. Deliver "no proof, no answer" the way a tagline is delivered: it is the thing they remember.
+
 ---
 
 ## Before you hit record (setup — not filmed)
@@ -33,7 +35,7 @@ Where is production data hosted?
 **DO:** Start recording on the app's **Messages** tab. The welcome message is visible ("I turn questionnaires into evidence-cited answers from this workspace").
 
 **SAY:**
-> "Every AI answers first and hopes it's right. This one refuses to. On a security questionnaire it won't write a single word unless the proof is already sitting in your Slack — and it can prove it never leaks an answer across permission boundaries. It's called Asked & Answered, and it turns your team's own history into the finished questionnaires that stall six-figure deals for days on one overloaded security lead. The model only ever proposes; deterministic code decides what's allowed out — and its default answer is no."
+> "Every AI answers first and hopes it's right. This one has one rule: no proof, no answer. On a security questionnaire it won't write a single word unless the proof is already sitting in your Slack — and it can prove it never leaks an answer across permission boundaries. It's called Asked & Answered — the courtroom objection — because it turns your team's own history into the finished questionnaires that stall six-figure deals for days on one overloaded security lead. The model only ever proposes; deterministic code decides what's allowed out, and its default answer is no. No proof, no answer."
 
 ---
 
@@ -57,7 +59,7 @@ Where is production data hosted?
 **DO:** Click **Review** on **"Do you carry cyber liability insurance?"**. The card opens with **no draft** and the line *"Asked & Answered would rather ask a human than invent a compliance answer."* Pause here for a couple of seconds. Let it sit.
 
 **SAY:** *(after a short pause)*
-> "This is the moment that matters. The evidence for this one lives in a private channel I'm not a member of. And remember — a customer signs a contract on this answer; an auditor reads it. So a confident wrong answer here isn't a typo, it's a false statement your company is now on the hook for. Almost any other agent would still write something plausible. This one stops, and asks a human instead. That refusal isn't a failure. It's the whole product."
+> "This is the moment that matters. The evidence for this one lives in a private channel I'm not a member of. And remember — a customer signs a contract on this answer; an auditor reads it. So a confident wrong answer here isn't a typo, it's a false statement your company is now on the hook for. Almost any other agent would still write something plausible. This one stops, and asks a human instead. That refusal isn't a failure — it's the rule working. No proof, no answer."
 
 ---
 
@@ -65,7 +67,7 @@ Where is production data hosted?
 **DO:** Open `#engineering` and show the planted line: *"we do NOT encrypt customer data at rest."* Go back to the DM and click **Review** on the **encryption** row — the answer still cites the real `#security` AES-256 / KMS message. Hover the citation link.
 
 **SAY:**
-> "And it doesn't just trust the model to cite honestly. Someone planted a contradicting message in this channel saying we do *not* encrypt at rest. But the grounded answer still cites the real evidence — because a component checks every cited snippet against what was actually retrieved. A fabricated or out-of-context citation gets downgraded automatically. That's deterministic — not prompt-engineering."
+> "And it doesn't just trust the model to cite honestly. Other agents read your evidence and give you their best judgment — some even warn you when something looks off, and that's genuinely useful. But a compliance answer has to clear a higher bar than judgment: it has to be *proven*. Watch — someone planted a contradicting message in this channel saying we do *not* encrypt at rest. The grounded answer still cites the real evidence, because a deterministic check verifies every cited snippet against what was actually retrieved. A fabricated or out-of-context citation is downgraded automatically. That's proof — not prompt-engineering."
 
 ---
 
@@ -105,7 +107,7 @@ Where is production data hosted?
 **DO:** Return to the Messages tab (the completed run visible). Optionally click **Export xlsx** to show the finished file downloading.
 
 **SAY:**
-> "Asked & Answered: your Slack history, turned into finished questionnaires — cited, approved, tamper-evident — without inventing a single compliance answer. Everything you just saw reproduces in your sandbox. Thanks for watching."
+> "Asked & Answered: your Slack history, turned into finished questionnaires — cited, approved, tamper-evident, and provably fail-closed. One rule the whole way through: no proof, no answer. Everything you just saw reproduces in your sandbox. Thanks for watching."
 
 ---
 
