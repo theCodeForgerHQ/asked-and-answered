@@ -171,6 +171,31 @@ describe('evidence graph re-observation and supersession', () => {
   });
 });
 
+describe('library re-approval', () => {
+  test('re-approving the same question makes the newest answer the one reused', async () => {
+    const library = AnswerLibrary.inMemory();
+    library.saveApproved({
+      questionText: 'Is MFA enforced?',
+      answerText: 'Old answer.',
+      citations: [],
+      approvedBy: 'U1',
+      kind: 'sme_testimony',
+    });
+    library.saveApproved({
+      questionText: 'Is MFA enforced?',
+      answerText: 'New corrected answer.',
+      citations: [],
+      approvedBy: 'U2',
+      kind: 'sme_testimony',
+    });
+    const lookup = await library.findVerified('Is MFA enforced?', 'U_REQ', { canSee: async () => true });
+    expect(lookup.status).toBe('verified');
+    if (lookup.status === 'verified') {
+      expect(lookup.answer.answerText).toBe('New corrected answer.');
+    }
+  });
+});
+
 describe('user token scope matching', () => {
   test('sqlite store requires an exact scope, not a substring', () => {
     const store = SqliteUserTokenStore.inMemory();

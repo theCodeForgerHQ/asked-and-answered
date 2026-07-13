@@ -311,8 +311,13 @@ export class AnswerLibrary {
     const answers = this.allAnswers();
     if (answers.length === 0) return undefined;
 
-    // Exact match bypasses all statistical reasoning.
-    const exact = answers.find((a) => normalize(a.questionText) === normalize(questionText));
+    // Exact match bypasses all statistical reasoning. Latest approval wins:
+    // when a question is re-answered and re-approved, the newer answer is the
+    // current policy — the older row must not shadow it.
+    const exact = answers
+      .slice()
+      .reverse()
+      .find((a) => normalize(a.questionText) === normalize(questionText));
     if (exact) return exact;
 
     // Calibrated conformal matcher, if available.
