@@ -179,7 +179,9 @@ export class DecisionGraph {
       const newest = relevant[relevant.length - 1]!;
       const oldest = relevant[0]!;
       rows.push({
-        topic: valueClass,
+        // Human-facing drift messages interpolate this ("<topic> changed from
+        // X to Y"), so it must be the question topic, not the value class.
+        topic,
         currentValue: newest.text,
         previousValue: oldest.text,
         permalink: newest.permalink,
@@ -205,8 +207,10 @@ export class DecisionGraph {
       return (yesA && noB) || (noA && yesB);
     }
 
-    // Different concrete values in same class are treated as drift.
-    if (a.valueClass === 'region') {
+    // Different concrete values in same class are treated as drift. This
+    // covers regions ("EU" → "us-east-1") and numbers ("30 days" → "90 days");
+    // without the number branch, numeric policy changes were never flagged.
+    if (a.valueClass === 'region' || a.valueClass === 'number') {
       return normalize(ta) !== normalize(tb);
     }
 

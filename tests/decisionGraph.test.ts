@@ -21,8 +21,14 @@ describe('DecisionGraph', () => {
     g.addEvidence('p/ins', 'C2', '2.0', 'Cyber liability policy is $5M.');
 
     const rows = g.resolve('Do you encrypt data at rest?');
-    expect(rows.some((r) => r.topic === 'boolean')).toBe(true);
-    expect(rows.some((r) => r.topic === 'money')).toBe(false);
+    expect(rows.length).toBeGreaterThan(0);
+    // Rows carry the question topic (for human-facing drift messages), and
+    // the off-topic insurance evidence must not produce a row.
+    for (const r of rows) {
+      expect(r.topic).toContain('encrypt');
+      expect(r.currentValue.toLowerCase()).not.toContain('liability');
+      expect((r.previousValue ?? '').toLowerCase()).not.toContain('liability');
+    }
   });
 
   test('does not flag drift when values agree', () => {

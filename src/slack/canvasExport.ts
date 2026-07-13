@@ -40,8 +40,11 @@ export function buildCanvasDocument(
     title?: string;
     generatedAt?: string;
     decisionLog?: boolean;
+    /** Maps questionId → user who confirmed the draft (first human gate). */
+    confirmedBy?: Record<string, string>;
   },
 ): CanvasDocument {
+  const confirmerOf = (r: DraftResult): string | undefined => opts.confirmedBy?.[r.questionId];
   const title = opts.title ?? (opts.decisionLog ? 'Decision Log — Asked & Answered' : 'Questionnaire — Asked & Answered');
   const approved = results.filter((r) => r.state === 'verified' && r.approvedBy);
   const sections: CanvasSection[] = [
@@ -72,7 +75,7 @@ export function buildCanvasDocument(
       items: approved.map(
         (r) =>
           `**${r.questionText}** — ${r.answerText ?? ''} ` +
-          `(approved by <@${r.approvedBy}> at ${r.approvedAt ?? ''})`,
+          `(${confirmerOf(r) ? `confirmed by <@${confirmerOf(r)}>, ` : ''}approved by <@${r.approvedBy}> at ${r.approvedAt ?? ''})`,
       ),
     });
   }
@@ -92,7 +95,7 @@ export function buildCanvasDocument(
       if (r.approvedBy) {
         sections.push({
           type: 'paragraph',
-          text: `Approved by <@${r.approvedBy}> at ${r.approvedAt ?? ''}.`,
+          text: `${confirmerOf(r) ? `Confirmed by <@${confirmerOf(r)}>. ` : ''}Approved by <@${r.approvedBy}> at ${r.approvedAt ?? ''}.`,
         });
       }
     } else {

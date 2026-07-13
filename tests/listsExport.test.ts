@@ -14,7 +14,20 @@ function fakeClient(error?: string) {
           (err as any).data = { error };
           throw err;
         }
-        if (method === 'lists.create') return { ok: true, list_id: 'L123' };
+        if (method === 'slackLists.create') {
+          return {
+            ok: true,
+            list_id: 'L123',
+            list_metadata: {
+              schema: [
+                { key: 'name', id: 'Col1' },
+                { key: 'status', id: 'Col2' },
+                { key: 'answer', id: 'Col3' },
+                { key: 'citations', id: 'Col4' },
+              ],
+            },
+          };
+        }
         return { ok: true };
       },
     } as any,
@@ -35,8 +48,12 @@ describe('exportToSlackList', () => {
     const res = await exportToSlackList(client, [grounded], { runId: 'r1', requesterId: 'U1' });
     expect(res.ok).toBe(true);
     expect(res.listId).toBe('L123');
-    expect(calls.some((c) => c.method === 'lists.create')).toBe(true);
-    expect(calls.some((c) => c.method === 'lists.edit')).toBe(true);
+    expect(calls.some((c) => c.method === 'slackLists.create')).toBe(true);
+    const itemCall = calls.find((c) => c.method === 'slackLists.items.create');
+    expect(itemCall).toBeDefined();
+    const fields = (itemCall?.args as { initial_fields: Array<{ column_id: string }> }).initial_fields;
+    // Every field must target a real column id returned by slackLists.create.
+    expect(fields.map((f) => f.column_id)).toEqual(['Col1', 'Col2', 'Col3', 'Col4']);
   });
 
   test('returns fallback reason on missing_scope', async () => {

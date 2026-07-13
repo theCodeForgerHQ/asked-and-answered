@@ -28,7 +28,7 @@ export interface GroundingResult {
  *   2. Lowercase, strip punctuation, collapse whitespace.
  *   3. Exact substring match in either direction.
  *   4. If exact fails, compute character-trigram Jaccard similarity.
- *   5. Require similarity >= threshold (default 0.85).
+ *   5. Require similarity >= threshold (default 0.8).
  *
  * The threshold is intentionally high: we would rather route a borderline
  * paraphrase to a human than ship an unsupported claim.
