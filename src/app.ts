@@ -121,7 +121,7 @@ const app = new App({
         const accept = req.headers.accept ?? '';
         if (accept.includes('application/json')) {
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ status: 'ok', capabilities, build: 'canvas-fix-04' }));
+          res.end(JSON.stringify({ status: 'ok', capabilities, build: 'team-id-05' }));
         } else {
           res.writeHead(200);
           res.end('ok');
@@ -1287,6 +1287,17 @@ app.action('open_stale_review_modal', async ({ ack, body, client, action }) => {
     console.error('open_stale_review_modal failed', err);
   }
 });
+
+// Canvas permalinks need the workspace team ID; derive it from the bot token
+// when the deployment does not set SLACK_TEAM_ID explicitly.
+if (!process.env.SLACK_TEAM_ID) {
+  try {
+    const identity = (await app.client.auth.test()) as { team_id?: string };
+    if (identity.team_id) process.env.SLACK_TEAM_ID = identity.team_id;
+  } catch (err) {
+    console.error('auth.test team lookup failed; canvas links may omit the team segment', err);
+  }
+}
 
 // Probe Slack capabilities once at startup. Failures are logged but never
 // prevent the app from starting; call sites fall back to safe behavior.
