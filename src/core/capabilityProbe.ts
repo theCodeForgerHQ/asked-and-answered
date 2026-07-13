@@ -89,8 +89,8 @@ export async function probeCapabilities(deps: CapabilityProbeDeps): Promise<Capa
           blocks: [
             {
               type: 'data_table',
-              columns: [{ name: 'probe', title: 'Probe', width: 100 }],
-              rows: [{ probe: 'ok' }],
+              caption: 'probe',
+              rows: [[{ type: 'raw_text', text: 'ok' }]],
             },
           ],
         },
