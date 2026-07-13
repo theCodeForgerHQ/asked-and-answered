@@ -2,13 +2,13 @@
 
 > Deadline: July 13, 2026 at 5:00 PM PT
 > Track: New Slack Agent
-> App: AskedAnswered · App ID A0BGXMFAK0V
+> App: AskedAnswered · App ID A0BHW9UC23A
 
 ---
 
 ## ✅ Done
 
-- [x] Slack app created and installed in sandbox (`Test Sandbox 123`, team `T0BH4KPMU7N`).
+- [x] Slack app created and installed in sandbox (`Asked Answered Demo`, team `T0BGLJF0J23`).
 - [x] Socket Mode OFF; Event Subscriptions request URL verified at `https://asked-and-answered-app.onrender.com/slack/events`.
 - [x] Code deployed to Render free web service: `https://asked-and-answered-app.onrender.com`.
 - [x] LLM routed through Azure OpenAI (`gpt-54-mini`, credits-only, no credit card).
@@ -28,13 +28,13 @@
 
 ### 1. Sandbox access
 
-In your Slack sandbox `Test Sandbox 123`, invite these users as **Members**:
+In your Slack sandbox `Asked Answered Demo`, invite these users as **Members**:
 
 - `slackhack@salesforce.com`
 - `testing@devpost.com`
 
 **How:**
-1. Open Slack in browser → `https://e0bh2rc3xgr-ixikpehf.slack.com/admin`.
+1. Open Slack in browser → `https://e0bgzv586kg-2g1mp275.slack.com/admin`.
 2. People → Invite People → enter both emails → Member role → Send.
 
 ### 2. Demo video (~3 minutes)
@@ -68,7 +68,7 @@ Open [the Devpost submission page](https://slack-agent-builder-2026.devpost.com)
 | Demo video URL | Your YouTube/Vimeo link |
 | GitHub repo | `https://github.com/theCodeForgerHQ/asked-and-answered` |
 | Architecture diagram | Upload `docs/architecture.svg` |
-| Slack sandbox URL | `https://e0bh2rc3xgr-ixikpehf.slack.com` |
+| Slack sandbox URL | `https://e0bgzv586kg-2g1mp275.slack.com` |
 
 ### 4. Submission metadata
 

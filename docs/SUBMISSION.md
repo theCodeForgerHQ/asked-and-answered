@@ -82,7 +82,7 @@ PDF intake, semantic RTS where the plan supports it, and Marketplace distributio
 
 - **Repo:** https://github.com/theCodeForgerHQ/asked-and-answered
 - **Live app:** https://asked-and-answered-app.onrender.com
-- **Slack App ID:** A0BGXMFAK0V
-- **Sandbox:** Test Sandbox 123 — access granted to slackhack@salesforce.com and testing@devpost.com
+- **Slack App ID:** A0BHW9UC23A
+- **Sandbox:** Asked Answered Demo — access granted to slackhack@salesforce.com and testing@devpost.com
 - **Architecture diagram:** docs/architecture.svg
 - **Evals:** docs/EVALS.md
