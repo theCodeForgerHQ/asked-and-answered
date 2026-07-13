@@ -35,7 +35,7 @@ Where is production data hosted?
 **DO:** Start recording on the app's **Messages** tab. The welcome message is visible ("I turn questionnaires into evidence-cited answers from this workspace").
 
 **SAY:**
-> "Every AI answers first and hopes it's right. This one has one rule: no proof, no answer. On a security questionnaire it won't write a single word unless the proof is already sitting in your Slack — and it can prove it never leaks an answer across permission boundaries. It's called Asked & Answered — the courtroom objection — because it turns your team's own history into the finished questionnaires that stall six-figure deals for days on one overloaded security lead. The model only ever proposes; deterministic code decides what's allowed out, and its default answer is no. No proof, no answer."
+> "Every AI answers first and hopes it's right. This one has one rule: no proof, no answer. On a security questionnaire it won't write a single word unless the proof is already sitting in your Slack. It's called Asked & Answered, and it turns your team's own history into the finished questionnaires that stall six-figure deals for days on one overloaded security lead. The model only ever proposes; deterministic code decides what's allowed out, and its default answer is no. No proof, no answer."
 
 ---
 
@@ -91,7 +91,7 @@ Where is production data hosted?
 **DO:** Paste the same four questions again and send. The encryption row now returns **Verified** instantly, crediting the approver, with the note *"re-checked against your permissions."*
 
 **SAY:**
-> "Now watch it compound. The answer we just approved comes back on the next questionnaire as Verified — instantly — and notice it's re-checked against my permissions before it's reused. On our seeded benchmark that's a simulated thirty-seven expert-hours, roughly five thousand dollars, saved for every hundred questions. And because every approval becomes a permanent, permission-aware asset, deal two starts mostly done — the savings grow with every deal you close."
+> "Now watch it compound. The answer we just approved comes back on the next questionnaire as Verified — instantly — and notice it's re-checked against my permissions before it's reused. On our seeded benchmark that's a simulated thirty-seven expert-hours, roughly fifty-six hundred dollars, saved for every hundred questions. And because every approval becomes a permanent, permission-aware asset, deal two starts mostly done — the savings grow with every deal you close."
 
 ---
 
@@ -99,7 +99,7 @@ Where is production data hosted?
 **DO:** Click the app's **Home** tab, then click the **Check invariant** quick action (or open `https://asked-and-answered-app.onrender.com/invariant` in a browser tab and show the `"status":"pass"` JSON).
 
 **SAY:**
-> "Underneath all of this is one rule: no answer text ever reaches someone who can't see all of its evidence. We enforce it in reuse, in fresh drafts, and in our MCP server. And we didn't just test it — we had a proof engine, Z3, check every possible path and confirm not one of them can leak. You don't have to take my word for it: that proof runs as a live health check you can hit right now. That's the one thing a compliance tool cannot get wrong — and we can prove we don't."
+> "Underneath all of this is one rule: no answer text ever reaches someone who can't see all of its evidence. We enforce it in reuse, in fresh drafts, and in our MCP server. And we didn't just test it — we had a proof engine, Z3, check every path our guards allow and confirm not one of them can leak. You don't have to take my word for it: that proof runs as a live health check you can hit right now. That's the one thing a compliance tool cannot get wrong — and we can prove we don't."
 
 ---
 
