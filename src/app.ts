@@ -767,7 +767,7 @@ for (const [actionId, verb] of [
         if (resultAfter?.state === 'verified') {
           text = `:white_check_mark: Approved by <@${userId}> — saved to the answer library.\n${planSummaryText(resolved.session.recount())}`;
         } else {
-          text = `:memo: Approved by <@${userId}> — this high-sensitivity answer needs one more distinct approver before it enters the library.\n${planSummaryText(resolved.session.recount())}`;
+          text = `:raised_hand: <@${userId}> — not in the library yet: the final approval must come from a *different human* than the confirmer (high-sensitivity questions need two distinct approvers).\n${planSummaryText(resolved.session.recount())}`;
         }
       } else {
         resolved.session.reject(resolved.questionId, userId, resolved.session.runId);
