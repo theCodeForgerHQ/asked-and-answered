@@ -1,6 +1,6 @@
 # Handoff — what only you (with credentials) can do
 
-The code is complete: 91 tests green, offline smoke passes, docs written, eval
+The code is complete: 292 tests green, offline smoke passes, docs written, eval
 numbers measured, submission text drafted. What's left needs YOUR accounts and
 YOUR hands. Do it in this order.
 

@@ -14,7 +14,7 @@
    - **Verified** — matches an answer an SME already approved (re-checked against *your* permissions before reuse)
    - **Grounded** — a new draft, cited to Slack messages/files you can see
    - **Needs SME** — insufficient evidence; the agent refuses to draft and routes to the right human
-4. Review in a native table; **confirm then approve** (two distinct human gates), edit, or reject per row. Every action appends to a hash-chained, event-sourced ledger (`verify ledger` proves it).
+4. Review in a native table; **confirm then approve** (two distinct human gates), edit, or reject per row. After you confirm, a picker sends the answer to a *different human*, who approves or rejects from a DM — the app refuses self-approval. Every action appends to a hash-chained, event-sourced ledger (`verify ledger` proves it).
 5. Export the finished questionnaire (xlsx, Canvas, or Workflow Builder step) with citations and approval records. Approved answers compound: the next questionnaire starts mostly done.
 
 ## The invariant
@@ -33,7 +33,7 @@
 
 ```bash
 npm install
-npm test          # 284 hermetic + live integration tests
+npm test          # 292 hermetic + live integration tests
 npm run typecheck
 npm run smoke     # full loop offline: parse → draft → review → confirm → approve → tamper → export
 npx tsx evals/run.ts   # 136-case measured eval with held-out set (default: deterministic fake LLM)
