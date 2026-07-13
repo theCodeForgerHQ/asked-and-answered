@@ -107,6 +107,74 @@ describe('probeCapabilities', () => {
     expect(caps.dataTable).toBe(false);
   });
 
+  test('falls back to auth.test token scopes when no installation is stored', async () => {
+    // Single-workspace deploys boot with SLACK_BOT_TOKEN and never record an
+    // OAuth installation — the probe must ask Slack for the token's scopes.
+    const caps = await probeCapabilities({
+      client: {
+        apiCall: async (method) => {
+          if (method === 'auth.test') {
+            return {
+              ok: true,
+              response_metadata: { scopes: ['chat:write', 'canvases:write', 'lists:write'] },
+            };
+          }
+          return { ok: true };
+        },
+      },
+      installationStore: new InMemoryInstallationStore(),
+      userTokenStore: new InMemoryUserTokenStore(),
+    });
+
+    expect(caps.canvas).toBe(true);
+    expect(caps.lists).toBe(true);
+  });
+
+  test('keeps canvas and lists disabled when auth.test fallback fails', async () => {
+    const caps = await probeCapabilities({
+      client: {
+        apiCall: async (method) => {
+          if (method === 'auth.test') throw new Error('network down');
+          return { ok: true };
+        },
+      },
+      installationStore: new InMemoryInstallationStore(),
+      userTokenStore: new InMemoryUserTokenStore(),
+    });
+
+    expect(caps.canvas).toBe(false);
+    expect(caps.lists).toBe(false);
+  });
+
+  test('prefers stored installation scopes over auth.test when present', async () => {
+    const installationStore = new InMemoryInstallationStore();
+    installationStore.saveInstallation({
+      teamId: 'T1',
+      botToken: 'xoxb-1',
+      scopes: ['chat:write'],
+      installedAt: new Date().toISOString(),
+    });
+
+    let authTestCalled = false;
+    const caps = await probeCapabilities({
+      client: {
+        apiCall: async (method) => {
+          if (method === 'auth.test') {
+            authTestCalled = true;
+            return { ok: true, response_metadata: { scopes: ['canvases:write', 'lists:write'] } };
+          }
+          return { ok: true };
+        },
+      },
+      installationStore,
+      userTokenStore: new InMemoryUserTokenStore(),
+    });
+
+    expect(authTestCalled).toBe(false);
+    expect(caps.canvas).toBe(false);
+    expect(caps.lists).toBe(false);
+  });
+
   test('defaults dataTable to true when no probe user is configured', async () => {
     const caps = await probeCapabilities({
       client: { apiCall: async () => ({ ok: true }) },

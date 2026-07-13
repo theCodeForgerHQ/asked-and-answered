@@ -49,13 +49,31 @@ function getBotScopes(store: InstallationStore, teamId?: string): string[] {
 }
 
 /**
+ * Single-workspace deploys boot with SLACK_BOT_TOKEN and never record an OAuth
+ * installation, so the store is empty. Ask Slack directly: the Web API echoes
+ * the token's granted scopes on every response (x-oauth-scopes header, exposed
+ * by WebClient as response_metadata.scopes).
+ */
+async function getTokenScopes(client: CapabilityProbeDeps['client']): Promise<string[]> {
+  try {
+    const res = (await client.apiCall('auth.test')) as {
+      response_metadata?: { scopes?: string[] };
+    };
+    return res.response_metadata?.scopes ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Probes the workspace for available Slack capabilities.
  *
  * The probe is safe to run at startup: it does not mutate workspace state and
  * falls back to disabled flags on any error.
  */
 export async function probeCapabilities(deps: CapabilityProbeDeps): Promise<CapabilityMap> {
-  const botScopes = getBotScopes(deps.installationStore, deps.teamId);
+  const storedScopes = getBotScopes(deps.installationStore, deps.teamId);
+  const botScopes = storedScopes.length > 0 ? storedScopes : await getTokenScopes(deps.client);
 
   const canvas = botScopes.includes('canvases:write');
   const lists = botScopes.includes('lists:write');
