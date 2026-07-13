@@ -49,31 +49,40 @@ Hit Enter. The progress messages stream in: *"Searching workspace evidence…" �
 
 *Rubric: DESIGN + IDEA — the citation click is the single most convincing 5 seconds of the demo. Slow down here.*
 
-## SCENE 4 — Two humans, enforced (1:15–1:50)
+## SCENE 4 — It refuses its own author (1:15–1:35)
 
-**ACTION:** in this exact order (do NOT click Confirm in Tab A — that would lock you in as the confirmer and block your own final approval):
+The buttons on a grounded answer card are **Confirm / Edit / Reject**. Approve only appears after a confirm — and it will still refuse the same human. Show both refusals on camera.
 
-1. **Tab A:** click **Approve** first → bot replies: *"…must be confirmed by a human before it can be approved."* Let the block sit on screen for a beat.
-2. **Tab A:** click **Route to SME** → a user picker appears → choose **Demo User** → *"📨 Routed to @Demo User."*
-3. **Tab B (Demo User):** a DM from the bot has arrived with the question → click **Provide an answer** → the modal opens → type the answer (echo the evidence: `Yes — all customer data is encrypted at rest with AES-256 via AWS KMS.`) → **Approve & save**. This records Demo User as the human confirmer.
-4. **Tab A:** click **Approve** → *"✅ Approved by @you — saved to the answer library."*
+**ACTION (Tab A), on the answer card from Scene 3:**
+
+1. Click **Confirm** → *"📝 Confirmed by @you — ready for final approval by a different human."*
+2. Back on the Review row, click **Open** again → the card re-renders, the primary button is now **Approve**.
+3. Click **Approve** → *"✋ …not in the library yet: the final approval must come from a **different human** than the confirmer."* Let that refusal sit on screen for a beat.
 
 **SAY:**
-> "Now watch it refuse *me*. I try to approve the draft it just wrote for me — blocked: nothing enters the library until a human has confirmed it.
-> So I route it to the expert. Sarah gets a DM, reviews the evidence, signs her answer. And only now — with *her* name on the confirmation — does *my* approval land. If I had confirmed it myself, it would have refused me again: the approver must be a **different** human.
-> Two mandatory gates, two distinct people, on every answer that enters the library. AI drafts; humans decide — enforced by the state machine, not by a policy document."
+> "I confirm the draft — one human gate down. But when I try to give it the *final* approval myself — refused. The approver must be a different human than the confirmer. My own rubber stamp doesn't count.
+> That's not a policy document. It's the state machine: nothing enters the reusable library on one person's say-so."
 
 *Rubric: DESIGN (craft) — you're demoing the failure modes on purpose. Judges reward products that show their guardrails working, not just their happy path.*
 
-## SCENE 5 — The compounding payoff (1:50–2:15)
+## SCENE 5 — The expert loop closes it (1:35–2:15)
 
-**ACTION (Tab A):** Paste the exact same question again: `Do you encrypt customer data at rest?` → summary flips to *"1 verified from the approved library · 0 grounded"* almost instantly. Click the **Native Canvas** decision-log link the bot posts → the Canvas opens: question, answer, citation, who approved, when.
+Now show the second human — via the flow that exists for it: **Route to an expert**. Use a question the workspace *can't* prove, which also demos the honest refusal.
+
+**ACTION:**
+
+1. **Tab A:** paste `Do you operate a bug bounty program?` → summary: *"…1 need a human"*. Click **Open** on the row → the card says *"No draft — no evidence found in this workspace. Asked & Answered would rather ask a human than invent a compliance answer."* with one button: **Route to an expert**.
+2. **Tab A:** click **Route to an expert** → user picker → choose **Demo User**→ *"📨 Routed to @Demo User."*
+3. **Tab B (Demo User):** the bot's DM has arrived → click **Provide an answer** → modal opens → type: `Not yet — a private bug bounty program launches Q4 2026; until then we run annual third-party penetration tests.` → **Approve & save**. That records Demo User as the human confirmer.
+4. **Tab A:** click **Open** on the same row → the card now shows the expert's answer with **Approve** → click it → *"✅ Approved by @you — saved to the answer library."* Two distinct humans, loop closed.
+5. **Tab A:** paste the same bug-bounty question again → *"1 verified from the approved library"*, instantly — and the bot's **Native Canvas** decision log link. Click it: question, answer, who confirmed, who approved, when.
 
 **SAY:**
-> "Same question, ten seconds later — instant, and now it's *Verified*: pre-approved, human-signed, citation intact. Every approval compounds into a reusable library, so the second questionnaire is cheaper than the first, and the fiftieth is nearly free.
-> And every run writes a decision log to a native Slack Canvas — the audit artifact writes itself."
+> "And when the workspace can't prove an answer? It says so — no draft, no guess — and hands me a single button: route it to a human who knows.
+> Sarah gets the DM, writes the real answer, signs it. Her name is the confirmation; now my approval lands, and the loop is closed — two distinct humans on record.
+> Ask it again — instant, *Verified*, pre-approved. Every answer a human signs compounds into a reusable library, so the second questionnaire is cheaper than the first and the fiftieth is nearly free. And the decision log writes itself to a native Slack Canvas."
 
-*Rubric: POTENTIAL IMPACT — this is the economic argument made visible in ten seconds.*
+*Rubric: POTENTIAL IMPACT — refusal-to-hallucinate, human routing, and compounding economics in one 40-second arc.*
 
 ## SCENE 6 — Proof, then the XYZ close (2:15–2:45)
 

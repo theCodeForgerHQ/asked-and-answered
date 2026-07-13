@@ -12,15 +12,15 @@ Grounded — with a receipt. Click the citation and you land on the real message
 
 Every drafted sentence must be backed by a citation the requester can see right now — that's not a prompt instruction, it's a deterministic gate in code, and the invariant behind it is machine-proved with the Z3 theorem prover. If a citation stops being visible to you, the answer is withheld. Fail closed, always.
 
-Now watch it refuse me. I try to approve the draft it just wrote for me — blocked: nothing enters the library until a human has confirmed it.
+I confirm the draft — one human gate down. But when I try to give it the final approval myself — refused. The approver must be a different human than the confirmer. My own rubber stamp doesn't count.
 
-So I route it to the expert. Sarah gets a DM, reviews the evidence, signs her answer. And only now — with her name on the confirmation — does my approval land. If I had confirmed it myself, it would have refused me again: the approver must be a different human.
+That's not a policy document. It's the state machine: nothing enters the reusable library on one person's say-so.
 
-Two mandatory gates, two distinct people, on every answer that enters the library. AI drafts; humans decide — enforced by the state machine, not by a policy document.
+And when the workspace can't prove an answer? It says so — no draft, no guess — and hands me a single button: route it to a human who knows.
 
-Same question, ten seconds later — instant, and now it's Verified: pre-approved, human-signed, citation intact. Every approval compounds into a reusable library, so the second questionnaire is cheaper than the first, and the fiftieth is nearly free.
+Sarah gets the DM, writes the real answer, signs it. Her name is the confirmation; now my approval lands, and the loop is closed — two distinct humans on record.
 
-And every run writes a decision log to a native Slack Canvas — the audit artifact writes itself.
+Ask it again — instant, Verified, pre-approved. Every answer a human signs compounds into a reusable library, so the second questionnaire is cheaper than the first and the fiftieth is nearly free. And the decision log writes itself to a native Slack Canvas.
 
 One more thing you can't fake: every human decision you just watched went into a tamper-evident, hash-chained ledger — and anyone can verify it, from inside Slack.
 
