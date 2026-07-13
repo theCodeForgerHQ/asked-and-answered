@@ -11,6 +11,11 @@ export interface SessionRecord {
   confirmedQuestionIds?: string[];
   /** Maps confirmed question ID to the human who confirmed it (legacy distinct-actor gate). */
   confirmedBy?: Record<string, string>;
+  /** Channel where the run originated (requester's DM). Lets handlers that fire
+   *  from surfaces without a channel (modals, other users' DMs) reach the run thread. */
+  originChannel?: string;
+  /** Thread timestamp of the originating run message. */
+  originThreadTs?: string;
   updatedAt: string;
 }
 
@@ -79,6 +84,14 @@ export class SqliteSessionStore implements SessionStore {
     // Backfill existing rows so the columns are always present.
     this.db.prepare(`UPDATE review_sessions SET confirmed_json = '[]' WHERE confirmed_json IS NULL`).run();
     this.db.prepare(`UPDATE review_sessions SET confirmed_by_json = '{}' WHERE confirmed_by_json IS NULL`).run();
+    // Migrate pre-origin databases in place; ALTER TABLE is a no-op error when the column exists.
+    for (const column of ['origin_channel', 'origin_thread_ts']) {
+      try {
+        this.db.prepare(`ALTER TABLE review_sessions ADD COLUMN ${column} TEXT`).run();
+      } catch {
+        /* column already exists */
+      }
+    }
   }
 
   static inMemory(): SqliteSessionStore {
@@ -92,14 +105,16 @@ export class SqliteSessionStore implements SessionStore {
   save(record: SessionRecord): void {
     this.db
       .prepare(
-        `INSERT INTO review_sessions (run_id, requester_id, results_json, counts_json, confirmed_json, confirmed_by_json, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO review_sessions (run_id, requester_id, results_json, counts_json, confirmed_json, confirmed_by_json, origin_channel, origin_thread_ts, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(run_id) DO UPDATE SET
            requester_id = excluded.requester_id,
            results_json = excluded.results_json,
            counts_json = excluded.counts_json,
            confirmed_json = excluded.confirmed_json,
            confirmed_by_json = excluded.confirmed_by_json,
+           origin_channel = excluded.origin_channel,
+           origin_thread_ts = excluded.origin_thread_ts,
            updated_at = excluded.updated_at`,
       )
       .run(
@@ -109,6 +124,8 @@ export class SqliteSessionStore implements SessionStore {
         JSON.stringify(record.counts),
         JSON.stringify(record.confirmedQuestionIds ?? []),
         JSON.stringify(record.confirmedBy ?? {}),
+        record.originChannel ?? null,
+        record.originThreadTs ?? null,
         record.updatedAt,
       );
   }
@@ -117,7 +134,7 @@ export class SqliteSessionStore implements SessionStore {
     const row = this.db
       .prepare('SELECT * FROM review_sessions WHERE run_id = ?')
       .get(runId) as
-      | { run_id: string; requester_id: string; results_json: string; counts_json: string; confirmed_json: string; confirmed_by_json: string; updated_at: string }
+      | { run_id: string; requester_id: string; results_json: string; counts_json: string; confirmed_json: string; confirmed_by_json: string; origin_channel: string | null; origin_thread_ts: string | null; updated_at: string }
       | undefined;
     if (!row) return undefined;
     return {
@@ -127,6 +144,8 @@ export class SqliteSessionStore implements SessionStore {
       counts: JSON.parse(row.counts_json) as PlanCounts,
       confirmedQuestionIds: JSON.parse(row.confirmed_json) as string[],
       confirmedBy: JSON.parse(row.confirmed_by_json) as Record<string, string>,
+      ...(row.origin_channel ? { originChannel: row.origin_channel } : {}),
+      ...(row.origin_thread_ts ? { originThreadTs: row.origin_thread_ts } : {}),
       updatedAt: row.updated_at,
     };
   }

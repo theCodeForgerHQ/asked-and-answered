@@ -14,8 +14,10 @@ import { invariantHealthCheck } from './core/invariant.js';
 import {
   answerCardBlocks,
   agentRunCardBlocks,
+  approvalRequestBlocks,
   planSummaryText,
   reviewTableBlocks,
+  sendForApprovalBlocks,
   smeRequestBlocks,
   staleAlertBlocks,
 } from './slack/blocks.js';
@@ -30,6 +32,7 @@ import { verifyInvariantWithZ3 } from '../scripts/verifyInvariantZ3.js';
 import { runQuestionnaire, ReviewSession, type RunDeps } from './slack/flows.js';
 import { ActionTokenStore, SlackRtsClient } from './slack/rts.js';
 import { Watcher } from './core/watcher.js';
+import { InMemoryAlertLog, SqliteAlertLog } from './core/alertLog.js';
 import { ChannelMembershipChecker } from './slack/visibility.js';
 import { InMemorySessionStore, SqliteSessionStore, type SessionStore } from './slack/sessionStore.js';
 import { InMemoryUserTokenStore, SqliteUserTokenStore, type UserTokenStore, buildUserOAuthUrl } from './slack/oauth.js';
@@ -197,6 +200,24 @@ const app = new App({
           res.end('Missing OAuth code');
           return;
         }
+        // Validate the signed state (userId:secret:timestamp) — without this
+        // the callback accepts forged links (CSRF onto someone else's token).
+        const STATE_MAX_AGE_MS = 10 * 60 * 1000;
+        let stateUserId: string | undefined;
+        try {
+          const decoded = Buffer.from(state, 'base64').toString('utf8');
+          const parts = decoded.split(':');
+          const ts = Number(parts.at(-1));
+          const secret = parts.slice(1, -1).join(':');
+          stateUserId = parts[0];
+          const secretOk = secret === (process.env.SLACK_SIGNING_SECRET ?? '');
+          const freshOk = Number.isFinite(ts) && Date.now() - ts < STATE_MAX_AGE_MS;
+          if (!stateUserId || !secretOk || !freshOk) throw new Error('bad state');
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          res.end('Invalid or expired OAuth state. Restart the authorization from the app Home tab.');
+          return;
+        }
         try {
           const clientId = process.env.SLACK_CLIENT_ID;
           const clientSecret = process.env.SLACK_CLIENT_SECRET;
@@ -229,6 +250,11 @@ const app = new App({
           if (!userId || !accessToken) {
             res.writeHead(400, { 'Content-Type': 'text/plain' });
             res.end('OAuth response missing user token');
+            return;
+          }
+          if (stateUserId && userId !== stateUserId) {
+            res.writeHead(400, { 'Content-Type': 'text/plain' });
+            res.end('OAuth state does not match the authorizing user.');
             return;
           }
           userTokenStore.saveUserToken(userId, accessToken, scopes);
@@ -421,6 +447,8 @@ function putSession(session: ReviewSession): void {
     counts: session.recount(),
     confirmedQuestionIds: Array.from(session.confirmedQuestionIds),
     confirmedBy: Object.fromEntries(session.confirmedBy),
+    ...(session.originChannel ? { originChannel: session.originChannel } : {}),
+    ...(session.originThreadTs ? { originThreadTs: session.originThreadTs } : {}),
     updatedAt: new Date().toISOString(),
   });
 }
@@ -493,30 +521,53 @@ const WELCOME =
   '• I only answer what the workspace can prove — everything else goes to a human.\n' +
   '• `verify ledger` checks the tamper-evident approval trail.';
 
+/** Compose and publish the dashboard Home tab for a user. Shared by the
+ *  app_home_opened event, the Back-to-dashboard button, and post-probe cleanup. */
+async function publishHome(client: typeof app.client, userId: string): Promise<void> {
+  const deps = depsForUser(userId);
+  const stats = await gatherHomeStats(library, ledgerV2, userId, deps.visibility, sessionStore.countOpenReviews());
+  const invariant = await invariantHealthCheck();
+  stats.invariantOk = invariant.status === 'pass';
+  const homeOpts: {
+    invariantCheckUrl?: string;
+    verifyLedgerUrl?: string;
+    useDataTable?: boolean;
+    userAuthUrl?: string;
+  } = { useDataTable: capabilities.dataTable };
+  if (process.env.AA_PUBLIC_URL) {
+    homeOpts.invariantCheckUrl = `${process.env.AA_PUBLIC_URL}/invariant`;
+    homeOpts.verifyLedgerUrl = `${process.env.AA_PUBLIC_URL}/verify-ledger`;
+  }
+  // Surface the private-channel search authorization when OAuth is configured
+  // and this user has not connected yet — previously this flow existed but was
+  // never linked from anywhere, so it could not be used at all.
+  if (process.env.SLACK_CLIENT_ID && process.env.AA_PUBLIC_URL && !userTokenStore.getUserToken(userId)) {
+    homeOpts.userAuthUrl = buildUserOAuthUrl({
+      clientId: process.env.SLACK_CLIENT_ID,
+      redirectUri: `${process.env.AA_PUBLIC_URL}/oauth/user`,
+      scopes: ['search:read'],
+      userId,
+      stateSecret: process.env.SLACK_SIGNING_SECRET ?? '',
+    });
+  }
+  await client.views.publish({
+    user_id: userId,
+    view: {
+      type: 'home',
+      blocks: appHomeBlocks(stats, homeOpts) as never,
+    },
+  });
+}
+
 app.event('app_home_opened', async ({ event, client }) => {
   const tab = (event as { tab?: string }).tab;
   const userId = (event as { user?: string }).user ?? '';
 
   if (tab === 'home') {
-    const deps = depsForUser(userId);
-    const stats = await gatherHomeStats(library, ledgerV2, userId, deps.visibility, sessionStore.countOpenReviews());
-    const invariant = await invariantHealthCheck();
-    stats.invariantOk = invariant.status === 'pass';
-    const homeOpts: { invariantCheckUrl?: string; verifyLedgerUrl?: string; useDataTable?: boolean } = { useDataTable: capabilities.dataTable };
-    if (process.env.AA_PUBLIC_URL) {
-      homeOpts.invariantCheckUrl = `${process.env.AA_PUBLIC_URL}/invariant`;
-      homeOpts.verifyLedgerUrl = `${process.env.AA_PUBLIC_URL}/verify-ledger`;
-    }
     try {
-      await client.views.publish({
-        user_id: userId,
-        view: {
-          type: 'home',
-          blocks: appHomeBlocks(stats, homeOpts) as never,
-        },
-      });
-    } catch {
-      /* App Home render is cosmetic */
+      await publishHome(client, userId);
+    } catch (err) {
+      console.error('App Home publish failed', err);
     }
     return;
   }
@@ -638,6 +689,10 @@ app.message(async ({ message, client }) => {
     const session = await runQuestionnaire(parsed, msg.user, depsForUser(msg.user), (progress) => {
       void say(progress);
     });
+    // Remember where the run lives so actions fired from channel-less surfaces
+    // (modals, a second approver's DM) can still reach this thread.
+    session.originChannel = msg.channel;
+    session.originThreadTs = threadTs;
     putSession(session);
     await say(planSummaryText(session.counts));
     await say('Review', reviewTableBlocks(session.results, { page: 0, runId: session.runId }) as unknown[]);
@@ -650,6 +705,7 @@ app.message(async ({ message, client }) => {
           requesterId: msg.user,
           title: 'Decision Log — Asked & Answered',
           decisionLog: true,
+          confirmedBy: Object.fromEntries(session.confirmedBy),
         });
         const channel = (msg as { channel?: string }).channel ?? '';
         const thread = (msg as { ts?: string }).ts ?? '';
@@ -683,21 +739,79 @@ function target(body: unknown): { channel: string; thread: string } | undefined 
   return { channel: b.channel.id, thread: b.message?.thread_ts ?? b.message?.ts ?? '' };
 }
 
+/**
+ * Channel/thread for an interaction, falling back to the session's origin
+ * thread. Interactions from modals carry no channel, and interactions from a
+ * second approver's DM should still be able to reach the run thread.
+ */
+function targetFor(
+  body: unknown,
+  session?: ReviewSession,
+): { channel: string; thread: string } | undefined {
+  const t = target(body);
+  if (t) return t;
+  if (session?.originChannel) {
+    return { channel: session.originChannel, thread: session.originThreadTs ?? '' };
+  }
+  return undefined;
+}
+
+/** True when the interaction came from inside a modal view. */
+function isModalInteraction(body: unknown): boolean {
+  return (body as { view?: { type?: string } }).view?.type === 'modal';
+}
+
+/** Post a status line into the run's origin thread when the actor acted from
+ *  a different surface (approver DM, modal), so the requester stays informed. */
+async function notifyOrigin(
+  client: typeof app.client,
+  session: ReviewSession,
+  actedIn: { channel: string } | undefined,
+  text: string,
+): Promise<void> {
+  if (!session.originChannel) return;
+  if (actedIn && actedIn.channel === session.originChannel) return;
+  try {
+    await client.chat.postMessage({
+      channel: session.originChannel,
+      ...(session.originThreadTs ? { thread_ts: session.originThreadTs } : {}),
+      text,
+    });
+  } catch (err) {
+    console.error('origin notification failed', err);
+  }
+}
+
 app.action('open_answer_card', async ({ ack, body, client, action }) => {
   await ack();
   try {
     const actorUserId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
     const resolved = sessionForValue((action as { value?: string }).value, actorUserId);
-    const t = target(body);
-    if (!resolved || !t) return;
+    if (!resolved) return;
     const result = resolved.session.results.find((r) => r.questionId === resolved.questionId);
     if (!result) return;
     const confirmed = resolved.session.confirmedQuestionIds.has(resolved.questionId);
+    const blocks = answerCardBlocks(result, resolved.session.runId, confirmed) as never;
+    if (isModalInteraction(body)) {
+      // Review clicked inside the table modal: stack the card on top of it.
+      await client.views.push({
+        trigger_id: (body as { trigger_id: string }).trigger_id,
+        view: {
+          type: 'modal',
+          title: { type: 'plain_text', text: 'Answer card' },
+          close: { type: 'plain_text', text: 'Back' },
+          blocks,
+        },
+      });
+      return;
+    }
+    const t = targetFor(body, resolved.session);
+    if (!t) return;
     await client.chat.postMessage({
       channel: t.channel,
       thread_ts: t.thread,
       text: result.questionText,
-      blocks: answerCardBlocks(result, resolved.session.runId, confirmed) as never,
+      blocks,
     });
   } catch (err) {
     console.error('open_answer_card failed', err);
@@ -709,8 +823,9 @@ app.action('open_run_card', async ({ ack, body, client, action }) => {
   try {
     const actorUserId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
     const resolved = sessionForValue((action as { value?: string }).value, actorUserId);
-    const t = target(body);
-    if (!resolved || !t) return;
+    if (!resolved) return;
+    const t = targetFor(body, resolved.session);
+    if (!t) return;
     const result = resolved.session.results.find((r) => r.questionId === resolved.questionId);
     if (!result) return;
     const signatures = {
@@ -735,8 +850,9 @@ app.action('table_next_page', async ({ ack, body, client, action }) => {
     const actorUserId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
     const resolved = sessionForValue((action as { value?: string }).value, actorUserId);
     const page = Number(parseValue((action as { value?: string }).value)?.questionId ?? '0');
-    const t = target(body);
-    if (!resolved || !t || Number.isNaN(page)) return;
+    if (!resolved || Number.isNaN(page)) return;
+    const t = targetFor(body, resolved.session);
+    if (!t) return;
     await client.chat.postMessage({
       channel: t.channel,
       thread_ts: t.thread,
@@ -756,22 +872,31 @@ for (const [actionId, verb] of [
     await ack();
     const userId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
     const resolved = sessionForValue((action as { value?: string }).value, userId);
-    const t = target(body);
-    if (!resolved || !t) return;
+    if (!resolved) return;
+    const t = targetFor(body, resolved.session);
+    if (!t) return;
     try {
       let text: string;
+      let originText: string | undefined;
       if (verb === 'approve') {
-        const resultBefore = resolved.session.results.find((r) => r.questionId === resolved.questionId);
+        const result = resolved.session.results.find((r) => r.questionId === resolved.questionId);
         resolved.session.approve(resolved.questionId, userId, resolved.session.runId);
-        const resultAfter = resolved.session.results.find((r) => r.questionId === resolved.questionId);
-        if (resultAfter?.state === 'verified') {
+        if (result?.state === 'verified') {
           text = `:white_check_mark: Approved by <@${userId}> — saved to the answer library.\n${planSummaryText(resolved.session.recount())}`;
+          originText = `:white_check_mark: *${result.questionText}* approved by <@${userId}> — saved to the answer library.`;
         } else {
-          text = `:raised_hand: <@${userId}> — not in the library yet: the final approval must come from a *different human* than the confirmer (high-sensitivity questions need two distinct approvers).\n${planSummaryText(resolved.session.recount())}`;
+          const confirmer = resolved.session.confirmedBy.get(resolved.questionId);
+          text =
+            `:raised_hand: <@${userId}> — not in the library yet: the final approval must come from a *different human* than the confirmer` +
+            `${confirmer ? ` (<@${confirmer}>)` : ''} (high-sensitivity questions need two distinct approvers).\n` +
+            `Use the *Choose an approver* picker on the confirmation message to hand this to someone else.\n` +
+            planSummaryText(resolved.session.recount());
         }
       } else {
+        const result = resolved.session.results.find((r) => r.questionId === resolved.questionId);
         resolved.session.reject(resolved.questionId, userId, resolved.session.runId);
         text = `:no_entry: Rejected by <@${userId}> — routed back to humans.\n${planSummaryText(resolved.session.recount())}`;
+        originText = result ? `:no_entry: *${result.questionText}* rejected by <@${userId}> — routed back to humans.` : undefined;
       }
       putSession(resolved.session);
       await client.chat.postMessage({
@@ -779,6 +904,7 @@ for (const [actionId, verb] of [
         thread_ts: t.thread,
         text,
       });
+      if (originText) await notifyOrigin(client, resolved.session, t, originText);
     } catch (err) {
       await client.chat.postMessage({
         channel: t.channel,
@@ -792,17 +918,25 @@ for (const [actionId, verb] of [
 app.action('confirm_answer', async ({ ack, body, client, action }) => {
   await ack();
   const userId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
-  const resolved = sessionForValue((action as { value?: string }).value, userId);
-  const t = target(body);
-  if (!resolved || !t) return;
+  const value = (action as { value?: string }).value;
+  const resolved = sessionForValue(value, userId);
+  if (!resolved) return;
+  const t = targetFor(body, resolved.session);
+  if (!t) return;
   try {
-    resolved.session.confirm(resolved.questionId, userId, resolved.session.runId);
+    const result = resolved.session.confirm(resolved.questionId, userId, resolved.session.runId);
     putSession(resolved.session);
     const counts = resolved.session.recount();
+    // Hand-off surface: without this picker the "different human" required for
+    // final approval has no way to ever see an Approve button.
     await client.chat.postMessage({
       channel: t.channel,
       thread_ts: t.thread,
-      text: `:memo: Confirmed by <@${userId}> — this answer is now ready for final approval by a different human.\n${planSummaryText(counts)}`,
+      text: `Confirmed by <@${userId}> — pick a different human for final approval. ${planSummaryText(counts)}`,
+      blocks: [
+        ...sendForApprovalBlocks({ questionText: result.questionText, ref: value ?? '', confirmerId: userId }),
+        { type: 'context', elements: [{ type: 'mrkdwn', text: planSummaryText(counts) }] },
+      ] as never,
     });
   } catch (err) {
     await client.chat.postMessage({
@@ -813,14 +947,67 @@ app.action('confirm_answer', async ({ ack, body, client, action }) => {
   }
 });
 
+app.action('approver_selected', async ({ ack, body, client, action }) => {
+  await ack();
+  try {
+    const approverId = (action as { selected_user?: string }).selected_user;
+    const b = body as {
+      user?: { id?: string };
+      message?: { blocks?: Array<{ elements?: Array<{ text?: string }> }> };
+    };
+    const actorUserId = b.user?.id ?? 'unknown';
+    const contextText = b.message?.blocks?.find((bl) => bl.elements)?.elements?.[0]?.text ?? '';
+    const ref = /ref:(\S+)/.exec(contextText)?.[1];
+    const resolved = sessionForValue(ref, actorUserId);
+    if (!approverId || !resolved) return;
+    const result = resolved.session.results.find((r) => r.questionId === resolved.questionId);
+    if (!result) return;
+    const t = targetFor(body, resolved.session);
+    const confirmer = resolved.session.confirmedBy.get(resolved.questionId);
+    if (approverId === confirmer) {
+      if (t) {
+        await client.chat.postMessage({
+          channel: t.channel,
+          thread_ts: t.thread,
+          text: `:no_entry_sign: <@${approverId}> confirmed this answer, so they cannot also approve it. Pick a different human.`,
+        });
+      }
+      return;
+    }
+    const dm = await client.conversations.open({ users: approverId });
+    if (dm.channel?.id) {
+      await client.chat.postMessage({
+        channel: dm.channel.id,
+        text: `Final approval requested: ${result.questionText}`,
+        blocks: approvalRequestBlocks({
+          result,
+          requesterId: resolved.session.requesterId,
+          confirmerId: confirmer ?? actorUserId,
+          runId: resolved.session.runId,
+        }) as never,
+      });
+    }
+    if (t) {
+      await client.chat.postMessage({
+        channel: t.channel,
+        thread_ts: t.thread,
+        text: `:incoming_envelope: Approval request sent to <@${approverId}> — they'll get a DM with Approve/Reject buttons.`,
+      });
+    }
+  } catch (err) {
+    console.error('approver_selected failed', err);
+  }
+});
+
 app.action('route_to_sme', async ({ ack, body, client, action }) => {
   await ack();
   try {
     const value = (action as { value?: string }).value;
     const requester = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
     const resolved = sessionForValue(value, requester);
-    const t = target(body);
-    if (!resolved || !t) return;
+    if (!resolved) return;
+    const t = targetFor(body, resolved.session);
+    if (!t) return;
     const result = resolved.session.results.find((r) => r.questionId === resolved.questionId);
     if (!result) return;
     await client.chat.postMessage({
@@ -916,27 +1103,82 @@ app.action('edit_answer', async ({ ack, body, client, action }) => {
   }
 });
 
-app.view('sme_answer_modal', async ({ ack, body, view }) => {
+app.view('sme_answer_modal', async ({ ack, body, view, client }) => {
+  const answer = view.state.values.answer_block?.answer_input?.value ?? '';
+  if (!answer.trim()) {
+    await ack({
+      response_action: 'errors',
+      errors: { answer_block: 'Please type an answer before submitting.' },
+    });
+    return;
+  }
   await ack();
   try {
-    const resolved = sessionForValue(view.private_metadata, body.user.id);
-    const answer = view.state.values.answer_block?.answer_input?.value ?? '';
-    if (!resolved || !answer.trim()) return;
-    resolved.session.smeProvide(resolved.questionId, body.user.id, answer, resolved.session.runId);
+    const smeId = body.user.id;
+    const resolved = sessionForValue(view.private_metadata, smeId);
+    if (!resolved) return;
+    const result = resolved.session.smeProvide(resolved.questionId, smeId, answer, resolved.session.runId);
     putSession(resolved.session);
+    // Close the loop: tell the SME it landed, and put the confirmed card back
+    // in the requester's run thread so a different human can approve it.
+    try {
+      const dm = await client.conversations.open({ users: smeId });
+      if (dm.channel?.id) {
+        await client.chat.postMessage({
+          channel: dm.channel.id,
+          text: `:white_check_mark: Answer recorded for *${result.questionText}*. It counts as confirmed by you — a different human still has to give final approval before it enters the library.`,
+        });
+      }
+    } catch (err) {
+      console.error('sme confirmation DM failed', err);
+    }
+    await notifyOrigin(client, resolved.session, undefined, `:raised_hand: <@${smeId}> answered *${result.questionText}* — needs final approval from a different human.`);
+    if (resolved.session.originChannel) {
+      try {
+        await client.chat.postMessage({
+          channel: resolved.session.originChannel,
+          ...(resolved.session.originThreadTs ? { thread_ts: resolved.session.originThreadTs } : {}),
+          text: result.questionText,
+          blocks: answerCardBlocks(result, resolved.session.runId, true) as never,
+        });
+      } catch (err) {
+        console.error('sme answer card post failed', err);
+      }
+    }
   } catch (err) {
     console.error('sme_answer_modal failed', err);
   }
 });
 
-app.view('edit_answer_modal', async ({ ack, body, view }) => {
+app.view('edit_answer_modal', async ({ ack, body, view, client }) => {
+  const answer = view.state.values.answer_block?.answer_input?.value ?? '';
+  if (!answer.trim()) {
+    await ack({
+      response_action: 'errors',
+      errors: { answer_block: 'Please type an answer before submitting.' },
+    });
+    return;
+  }
   await ack();
   try {
     const resolved = sessionForValue(view.private_metadata, body.user.id);
-    const answer = view.state.values.answer_block?.answer_input?.value ?? '';
-    if (!resolved || !answer.trim()) return;
-    resolved.session.edit(resolved.questionId, body.user.id, answer, resolved.session.runId);
+    if (!resolved) return;
+    const result = resolved.session.edit(resolved.questionId, body.user.id, answer, resolved.session.runId);
     putSession(resolved.session);
+    const confirmed = resolved.session.confirmedQuestionIds.has(resolved.questionId);
+    await notifyOrigin(client, resolved.session, undefined, `:pencil2: <@${body.user.id}> edited the draft for *${result.questionText}*.`);
+    if (resolved.session.originChannel) {
+      try {
+        await client.chat.postMessage({
+          channel: resolved.session.originChannel,
+          ...(resolved.session.originThreadTs ? { thread_ts: resolved.session.originThreadTs } : {}),
+          text: result.questionText,
+          blocks: answerCardBlocks(result, resolved.session.runId, confirmed) as never,
+        });
+      } catch (err) {
+        console.error('edited answer card post failed', err);
+      }
+    }
   } catch (err) {
     console.error('edit_answer_modal failed', err);
   }
@@ -944,12 +1186,14 @@ app.view('edit_answer_modal', async ({ ack, body, view }) => {
 
 app.action('export_xlsx', async ({ ack, body, client, action }) => {
   await ack();
-  const t = target(body);
+  let t = target(body);
   try {
     // export button value is `runId:` (no question); fall back to any-in-thread not needed.
     const actorUserId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
     const resolved = sessionForValue((action as { value?: string }).value, actorUserId);
-    if (!resolved || !t) return;
+    if (!resolved) return;
+    t = targetFor(body, resolved.session);
+    if (!t) return;
     const buf = await exportXlsx(resolved.session.results);
     await client.files.uploadV2({
       channel_id: t.channel,
@@ -969,14 +1213,32 @@ app.action('open_review_modal', async ({ ack, body, client, action }) => {
     const actorUserId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
     const resolved = sessionForValue((action as { value?: string }).value, actorUserId);
     if (!resolved) return;
-    await client.views.open({
-      trigger_id: (body as { trigger_id: string }).trigger_id,
-      view: reviewModalView(resolved.session.results, {
-        runId: resolved.session.runId,
-        title: 'Questionnaire review',
-        useDataTable: capabilities.dataTable,
-      }) as never,
-    });
+    const triggerId = (body as { trigger_id: string }).trigger_id;
+    const modalOpts = {
+      runId: resolved.session.runId,
+      title: 'Questionnaire review',
+    };
+    try {
+      await client.views.open({
+        trigger_id: triggerId,
+        view: reviewModalView(resolved.session.results, {
+          ...modalOpts,
+          useDataTable: capabilities.dataTable,
+        }) as never,
+      });
+    } catch (err) {
+      // data_table may be rejected on surfaces/workspaces that don't support
+      // it in modals yet — fall back to the section-based table so the button
+      // never silently does nothing.
+      console.error('open_review_modal data_table render failed; falling back to sections', err);
+      await client.views.open({
+        trigger_id: triggerId,
+        view: reviewModalView(resolved.session.results, {
+          ...modalOpts,
+          useDataTable: false,
+        }) as never,
+      });
+    }
   } catch (err) {
     console.error('open_review_modal failed', err);
   }
@@ -984,16 +1246,19 @@ app.action('open_review_modal', async ({ ack, body, client, action }) => {
 
 app.action('export_canvas', async ({ ack, body, client, action }) => {
   await ack();
-  const t = target(body);
+  let t = target(body);
   try {
     const actorUserId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
     const resolved = sessionForValue((action as { value?: string }).value, actorUserId);
-    if (!resolved || !t) return;
+    if (!resolved) return;
+    t = targetFor(body, resolved.session);
+    if (!t) return;
     const doc = buildCanvasDocument(resolved.session.results, {
       runId: resolved.session.runId,
       requesterId: resolved.session.requesterId,
       title: 'Decision Log — Asked & Answered',
       decisionLog: true,
+      confirmedBy: Object.fromEntries(resolved.session.confirmedBy),
     });
     const result = await createCanvasOrFallback(client, t.channel, t.thread, doc, {
       forceFallback: !capabilities.canvas,
@@ -1010,11 +1275,13 @@ app.action('export_canvas', async ({ ack, body, client, action }) => {
 
 app.action('export_list', async ({ ack, body, client, action }) => {
   await ack();
-  const t = target(body);
+  let t = target(body);
   try {
     const actorUserId = (body as { user?: { id?: string } }).user?.id ?? 'unknown';
     const resolved = sessionForValue((action as { value?: string }).value, actorUserId);
-    if (!resolved || !t) return;
+    if (!resolved) return;
+    t = targetFor(body, resolved.session);
+    if (!t) return;
     if (!capabilities.lists) {
       await client.chat.postMessage({
         channel: t.channel,
@@ -1183,27 +1450,24 @@ app.action('apphome_return_home', async ({ ack, body, client }) => {
   await ack();
   const userId = (body as { user?: { id?: string } }).user?.id;
   if (!userId) return;
-  const deps = depsForUser(userId);
-  const stats = await gatherHomeStats(library, ledgerV2, userId, deps.visibility, sessionStore.countOpenReviews());
-  const invariant = await invariantHealthCheck();
-  stats.invariantOk = invariant.status === 'pass';
-  const homeOpts: { invariantCheckUrl?: string; verifyLedgerUrl?: string; useDataTable?: boolean } = { useDataTable: capabilities.dataTable };
-  if (process.env.AA_PUBLIC_URL) {
-    homeOpts.invariantCheckUrl = `${process.env.AA_PUBLIC_URL}/invariant`;
-    homeOpts.verifyLedgerUrl = `${process.env.AA_PUBLIC_URL}/verify-ledger`;
-  }
   try {
-    await client.views.publish({
-      user_id: userId,
-      view: {
-        type: 'home',
-        blocks: appHomeBlocks(stats, homeOpts) as never,
-      },
-    });
+    await publishHome(client, userId);
   } catch (err) {
     console.error('apphome_return_home failed', err);
   }
 });
+
+// URL buttons still emit block_actions events; ack them so Bolt does not log
+// "no handler" warnings and Slack does not show the user a warning icon.
+for (const urlButtonActionId of [
+  'apphome_open_invariant',
+  'apphome_open_verify_ledger',
+  'apphome_authorize_search',
+] as const) {
+  app.action(urlButtonActionId, async ({ ack }) => {
+    await ack();
+  });
+}
 
 /** Opens the shared answer-input modal, prefilled and tagged with a run ref. */
 async function openAnswerModal(
@@ -1243,6 +1507,10 @@ async function openAnswerModal(
 // approved answer is contradicted or superseded by newer workspace evidence.
 const watcher = new Watcher(library, graph, {
   intervalMs: Number(process.env.AA_WATCHER_INTERVAL_MS ?? 3_600_000),
+  alertLog:
+    process.env.AA_SESSION_STORE === 'memory'
+      ? new InMemoryAlertLog()
+      : SqliteAlertLog.atPath(dbPath.replace(/\.db$/, '-alerts.db')),
   onStale: async (alert) => {
     try {
       const dm = await app.client.conversations.open({ users: alert.approvedBy });
@@ -1310,6 +1578,15 @@ try {
     probeUserId: process.env.AA_PROBE_USER_ID,
   });
   console.log('Capability probe complete', capabilities);
+  // The data_table probe publishes a throwaway Home view to the probe user;
+  // restore their real dashboard so they don't see a view that just says "probe".
+  if (process.env.AA_PROBE_USER_ID) {
+    try {
+      await publishHome(app.client, process.env.AA_PROBE_USER_ID);
+    } catch (err) {
+      console.error('post-probe home restore failed', err);
+    }
+  }
 } catch (err) {
   console.error('Capability probe failed, using defaults', err);
 }

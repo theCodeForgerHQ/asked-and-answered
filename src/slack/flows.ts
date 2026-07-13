@@ -34,6 +34,12 @@ export class ReviewSession {
   /** Tracks which human confirmed each question (legacy path distinct-actor gate). */
   public readonly confirmedBy = new Map<string, string>();
 
+  /** Channel of the originating run (requester's DM); set at intake so handlers
+   *  fired from channel-less surfaces (modals, approver DMs) can reach the thread. */
+  public originChannel?: string;
+  /** Thread timestamp of the originating run message. */
+  public originThreadTs?: string;
+
   constructor(
     public readonly results: DraftResult[],
     public readonly counts: PlanCounts,
@@ -43,13 +49,15 @@ export class ReviewSession {
 
   /** Reconstruct a session from durable state + fresh per-request deps. */
   static fromState(
-    state: { runId: string; results: DraftResult[]; counts: PlanCounts; requesterId: string; confirmedQuestionIds?: string[]; confirmedBy?: Record<string, string> },
+    state: { runId: string; results: DraftResult[]; counts: PlanCounts; requesterId: string; confirmedQuestionIds?: string[]; confirmedBy?: Record<string, string>; originChannel?: string; originThreadTs?: string },
     deps: RunDeps,
   ): ReviewSession {
     const session = new ReviewSession(state.results, state.counts, deps, state.requesterId);
     (session as unknown as { runId: string }).runId = state.runId;
     for (const id of state.confirmedQuestionIds ?? []) session.confirmedQuestionIds.add(id);
     for (const [id, actor] of Object.entries(state.confirmedBy ?? {})) session.confirmedBy.set(id, actor);
+    if (state.originChannel) session.originChannel = state.originChannel;
+    if (state.originThreadTs) session.originThreadTs = state.originThreadTs;
     return session;
   }
 

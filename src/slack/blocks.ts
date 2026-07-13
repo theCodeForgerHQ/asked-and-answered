@@ -249,6 +249,63 @@ export function answerCardBlocks(r: DraftResult, runId = '', confirmed = false):
   return blocks;
 }
 
+/**
+ * Post-confirm hand-off: the confirmer picks a *different* human who will
+ * receive the approval request as a DM. This is the surface that makes the
+ * two-human gate actually reachable — without it the Approve button only
+ * ever renders inside the requester's own DM.
+ */
+export function sendForApprovalBlocks(input: {
+  questionText: string;
+  /** Opaque `runId:questionId` ref, round-tripped through the picker. */
+  ref: string;
+  confirmerId: string;
+}): Block[] {
+  return [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text:
+          `:memo: Confirmed by <@${input.confirmerId}>. Final approval must come from a *different human*.\n` +
+          `Pick who should approve:\n*${input.questionText}*`,
+      },
+      accessory: {
+        type: 'users_select',
+        action_id: 'approver_selected',
+        placeholder: { type: 'plain_text', text: 'Choose an approver' },
+      },
+    },
+    {
+      type: 'context',
+      // Carry the runId:questionId so the pick resolves to the exact run.
+      elements: [{ type: 'mrkdwn', text: `ref:${input.ref} confirmer:<@${input.confirmerId}>` }],
+    },
+  ];
+}
+
+/** DM card asking a second human for final approval on a confirmed answer. */
+export function approvalRequestBlocks(input: {
+  result: DraftResult;
+  requesterId: string;
+  confirmerId: string;
+  runId: string;
+}): Block[] {
+  return [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text:
+          `:shield: <@${input.requesterId}> needs your *final approval* on a questionnaire answer.\n` +
+          `_Confirmed by <@${input.confirmerId}> — policy requires a different human to approve._`,
+      },
+    },
+    { type: 'divider' },
+    ...answerCardBlocks(input.result, input.runId, true),
+  ];
+}
+
 export function smeRequestBlocks(input: {
   questionText: string;
   requesterId: string;
