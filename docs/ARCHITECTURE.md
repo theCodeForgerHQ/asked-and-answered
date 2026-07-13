@@ -9,7 +9,7 @@ tamper-evidently logged, and now deterministically grounded.
 ```
                          Slack (agent_view Messages tab)
                                     │
-                 upload xlsx/csv  ┌─┴─┐  stream plan · review table · /verify
+                 upload xlsx/csv  ┌─┴─┐  stream plan · review table · verify ledger
                                   │app│  (src/app.ts — Bolt listeners & actions)
                                   └─┬─┘
         ┌───────────────┬──────────┼───────────────┬─────────────────┬─────────────────┐
@@ -24,7 +24,7 @@ tamper-evidently logged, and now deterministically grounded.
               │  search.context)│    verification)        │                 │                │
               └─────────────────┘                         │                 │                │
                                                           ▼                 ▼                ▼
-                                              EvidenceGraph      asked-answered-mcp    /aa verify
+                                              EvidenceGraph      asked-answered-mcp    verify ledger
                                             (SUPPORTS /          (search_answers,      (tamper check)
                                              CONTRADICTS /       get_answer_provenance,
                                              SUPERSEDES)         propose_answer)
@@ -103,8 +103,8 @@ counts as "not visible."
 
 ## Testing
 
-- `npm test` — 146 hermetic tests (no network, no Slack), incl. a 200-run
+- `npm test` — 292 hermetic tests (no network, no Slack), incl. a 200-run
   fast-check property suite on the invariant.
 - `npm run smoke` — the full loop offline: parse → plan → draft → review →
   compounding reuse → tamper detection → export.
-- `npx tsx evals/run.ts` — 60-case labeled eval (see `docs/EVALS.md`).
+- `npx tsx evals/run.ts` — 136-case labeled eval (see `docs/EVALS.md`).

@@ -49,10 +49,10 @@
 
 ## Scene 5 — Human review and export (2:05–2:35)
 
-**Visual:** Approve one grounded answer, edit another, reject a third. Then type `export` in the DM.
+**Visual:** Confirm one grounded answer and send it to a second user who approves it from their DM, edit another, reject a third. Then click **Export xlsx** in the review toolbar.
 
 **Narration:**
-"Experts approve, edit, or reject each answer inside Slack. Every approval is appended to a tamper-evident, event-sourced ledger. Type 'export' and the agent returns a finished xlsx with every answer, its citations, and the approval trail."
+"Experts confirm, edit, or reject each answer inside Slack — and a second human gives final approval from a DM. Every approval is appended to a tamper-evident, event-sourced ledger. Click Export xlsx and the agent returns a finished spreadsheet with every answer, its citations, and the approval trail."
 
 **Visual:** Download and open the exported xlsx. Show columns: question, answer, citations, status, approved by.
 

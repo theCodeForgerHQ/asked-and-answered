@@ -9,7 +9,7 @@
 
 ## Pre-flight (do this 10 minutes before recording)
 
-1. `curl -s -H 'Accept: application/json' https://asked-and-answered-app.onrender.com/health` → confirm `"status":"ok"` and `canvas:true, lists:true`.
+1. `curl -s -H 'Accept: application/json' https://asked-and-answered-app.onrender.com/health` → confirm `"status":"ok"` and, under `capabilities`, `"canvas":true` and `"lists":true`.
 2. The demo question must NOT already be in the approved library — the library persists between runs and would short-circuit the "grounded" beat straight to "verified". Either trigger a fresh Render deploy (wipes the DB) or confirm a fresh run of the question shows *grounded*, not *verified*.
 3. **Rehearse with a different question** ("Is MFA enforced for all employees?") so rehearsal approvals don't contaminate the demo question.
 4. Tab A: open the **Asked & Answered** app → Messages tab. Tab B: sign in as Demo User, same place. Arrange tabs so you can switch in one click.
@@ -55,7 +55,7 @@ The buttons on a grounded answer card are **Confirm / Edit / Reject**. Approve o
 
 **ACTION (Tab A), on the answer card from Scene 3:**
 
-1. Click **Confirm** → *"📝 Confirmed by @you — ready for final approval by a different human."*
+1. Click **Confirm** → *"📝 Confirmed by @you. Final approval must come from a **different human**."* — with a **Choose an approver** picker attached. (Picking a user DMs them the Approve/Reject card; we'll use that loop in Scene 5.)
 2. Back on the Review message, click the row's **Review** button again → a fresh answer card posts, the primary button is now **Approve**.
 3. Click **Approve** → *"✋ …not in the library yet: the final approval must come from a **different human** than the confirmer."* Let that refusal sit on screen for a beat.
 
@@ -73,8 +73,8 @@ Now show the second human — via the flow that exists for it: **Route to an exp
 
 1. **Tab A:** paste `Do you operate a bug bounty program?` → summary: *"…1 need a human"*. Click the row's **Review** button → the card says *"No draft — no evidence found in this workspace. Asked & Answered would rather ask a human than invent a compliance answer."* with one button: **Route to an expert**.
 2. **Tab A:** click **Route to an expert** → user picker → choose **Demo User**→ *"📨 Routed to @Demo User."*
-3. **Tab B (Demo User):** the bot's DM has arrived → click **Provide an answer** → modal opens → type: `Not yet — a private bug bounty program launches Q4 2026; until then we run annual third-party penetration tests.` → **Approve & save**. That records Demo User as the human confirmer.
-4. **Tab A:** click the row's **Review** button again → the card now shows the expert's answer with **Approve** → click it → *"✅ Approved by @you — saved to the answer library."* Two distinct humans, loop closed.
+3. **Tab B (Demo User):** the bot's DM has arrived → click **Provide an answer** → modal opens → type: `Not yet — a private bug bounty program launches Q4 2026; until then we run annual third-party penetration tests.` → **Approve & save**. Demo User gets a confirmation DM, and the answer card lands back in Tab A's run thread automatically.
+4. **Tab A:** the expert's answer card is already in the thread with **Approve** → click it → *"✅ Approved by @you — saved to the answer library."* Two distinct humans, loop closed.
 5. **Tab A:** paste the same bug-bounty question again → *"1 verified from the approved library"*, instantly — and the bot's **Native Canvas** decision log link. Click it: question, answer, who confirmed, who approved, when.
 
 **SAY:**
@@ -90,7 +90,7 @@ Now show the second human — via the flow that exists for it: **Route to an exp
 
 **SAY:**
 > "One more thing you can't fake: every human decision you just watched went into a tamper-evident, hash-chained ledger — and anyone can verify it, from inside Slack.
-> So here's the whole product in one sentence: **security teams eliminate the hours lost to repeat questionnaire answers — with zero un-cited, un-approved claims, enforced by a Z3-proven permission invariant, 288 automated tests, and a 136-case eval — by turning Slack itself into an evidence-grounded, human-gated answer pipeline.**
+> So here's the whole product in one sentence: **security teams eliminate the hours lost to repeat questionnaire answers — with zero un-cited, un-approved claims, enforced by a Z3-proven permission invariant, 292 automated tests, and a 136-case eval — by turning Slack itself into an evidence-grounded, human-gated answer pipeline.**
 > Your team already answered this. Asked & Answered just proves it."
 
 *Rubric: IMPACT + IDEA — the Google XYZ sentence ("accomplished X, measured by Y, by doing Z") is the last thing judges hear. End on the tagline, hard cut.*
@@ -100,7 +100,7 @@ Now show the second human — via the flow that exists for it: **Route to an exp
 ## The XYZ articulations (reuse in submission copy)
 
 - **X (accomplish):** eliminate repeat security-questionnaire work and hallucinated compliance claims
-- **Y (measured by):** 0 answers released without visible citations + distinct-human approval; Z3-proved invariant (abstract + code-level); 288 tests; 136-case eval; tamper-evident ledger verifiable in-channel
+- **Y (measured by):** 0 answers released without visible citations + distinct-human approval; Z3-proved invariant (abstract + code-level); 292 tests; 136-case eval; tamper-evident ledger verifiable in-channel
 - **Z (by doing):** an evidence-grounded, fail-closed pipeline on Slack Real-Time Search with two enforced human gates and a compounding approved-answer library
 
 ## Why one question beats a spreadsheet on camera
@@ -123,6 +123,6 @@ A 47-row xlsx demos *throughput*; judges can't verify throughput in a video and 
 - **Don't rehearse with the demo question** — an approved rehearsal answer makes Scene 2 show *verified* instead of *grounded*.
 - **Render deploys wipe the library** — a deploy between rehearsal and recording resets everything (which is also the cleanest way to reset).
 - Avoid "cyber liability insurance" and "hosted geographically" as demo questions — workspace seed data grounds both, so they no longer demo the Needs-SME path.
-- If you want a Needs-SME beat instead of Scene 4's blocked-approve beat, ask something with no workspace evidence (e.g. `Do you operate a bug bounty program?`) and show **Route to SME** — but keep the runtime under 3:00.
+- If you want a Needs-SME beat instead of Scene 4's blocked-approve beat, ask something with no workspace evidence (e.g. `Do you operate a bug bounty program?`) and show **Route to an expert** — but keep the runtime under 3:00.
 - Occasionally a run comes back *"Needs SME — draft cited evidence that does not support the answer."* That's the deterministic grounding gate refusing a sloppy LLM draft — the product failing closed, exactly as designed. On camera you can either re-ask the question, or *feature it*: "it just refused its own draft rather than ship an unsupported answer." The encryption question grounds most reliably because the evidence phrasing ("encrypted at rest with AES-256") echoes naturally into the answer.
 - The SME modal (Provide an answer) is the one step that requires a real click in a real session (`trigger_id`); every other beat in this script was verified end-to-end against the live deployment on 2026-07-14.

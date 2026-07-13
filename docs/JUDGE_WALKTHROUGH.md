@@ -28,13 +28,18 @@ Click **Review** on the *cyber liability insurance* row. The card shows **no
 draft** and the line: *"Asked & Answered would rather ask a human than invent a
 compliance answer."* This is the product in one screen.
 
-## 3. Approve a grounded answer (30s)
+## 3. Approve a grounded answer — two humans required (45s)
 Click **Review** on the *encrypt data at rest* row → read the draft and its
-citation → **Approve**. It's saved to the answer library and logged.
+citation → **Confirm**. A picker appears: *choose an approver*. Pick a second
+user — they get a DM with the answer card and **Approve / Reject** buttons.
+(If you try to Approve your own confirmation, the app refuses: the final
+approval must come from a different human.) Once the second user clicks
+**Approve**, it's saved to the answer library and logged, and the run thread
+is notified.
 
 ## 4. Prove the compounding payoff (30s)
 Paste the same four questions again. The encryption question now returns
-**Verified** instantly (reused from your approval), with the approver credited —
+**Verified** instantly (reused from the approval), with the approver credited —
 and re-checked against your permissions.
 
 ## 5. Prove tamper-evidence (30s)

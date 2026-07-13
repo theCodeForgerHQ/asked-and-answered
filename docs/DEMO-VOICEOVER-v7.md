@@ -24,6 +24,6 @@ Ask it again — instant, Verified, pre-approved. Every answer a human signs com
 
 One more thing you can't fake: every human decision you just watched went into a tamper-evident, hash-chained ledger — and anyone can verify it, from inside Slack.
 
-So here's the whole product in one sentence: security teams eliminate the hours lost to repeat questionnaire answers — with zero un-cited, un-approved claims, enforced by a Z3-proven permission invariant, 288 automated tests, and a 136-case eval — by turning Slack itself into an evidence-grounded, human-gated answer pipeline.
+So here's the whole product in one sentence: security teams eliminate the hours lost to repeat questionnaire answers — with zero un-cited, un-approved claims, enforced by a Z3-proven permission invariant, 292 automated tests, and a 136-case eval — by turning Slack itself into an evidence-grounded, human-gated answer pipeline.
 
 Your team already answered this. Asked & Answered just proves it.
